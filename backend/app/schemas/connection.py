@@ -1,7 +1,9 @@
 """Connection request/response schemas."""
 
 import uuid
+from datetime import datetime
 from typing import Optional
+
 from pydantic import BaseModel, Field
 
 
@@ -14,17 +16,20 @@ class ConnectionCreate(BaseModel):
     username: Optional[str] = None
     password: Optional[str] = None
     ssl_mode: str = "prefer"
+    file_path: Optional[str] = None
 
 
 class ConnectionResponse(BaseModel):
     id: uuid.UUID
     name: str
     type: str
-    host: Optional[str]
-    port: Optional[int]
-    database_name: Optional[str]
+    host: Optional[str] = None
+    port: Optional[int] = None
+    database_name: Optional[str] = None
+    username: Optional[str] = None
     is_active: bool
-    last_synced_at: Optional[str]
+    last_synced_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 

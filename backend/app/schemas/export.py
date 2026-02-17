@@ -1,12 +1,11 @@
 """Export request schemas."""
 
-import uuid
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ExportRequest(BaseModel):
-    query_sql: str
-    connection_id: uuid.UUID
-    title: Optional[str] = "DataMind Export"
-    include_chart: bool = True
+    title: str = Field(default="DataMind Export", max_length=255)
+    data: dict  # Expected shape: {"columns": list[str], "rows": list[list]}
+    insight: Optional[str] = None
+    chart_config: Optional[dict] = None

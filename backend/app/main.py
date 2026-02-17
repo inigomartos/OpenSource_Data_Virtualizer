@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.router import api_router
 from app.api.websocket import websocket_router
 from app.core.database import engine
-from app.core.middleware import RequestLoggingMiddleware
+from app.core.middleware import RequestLoggingMiddleware, RateLimitMiddleware
 from app.config import settings
 from loguru import logger
 
@@ -35,6 +35,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.add_middleware(RequestLoggingMiddleware)
+    app.add_middleware(RateLimitMiddleware, requests_per_minute=100)
 
     app.include_router(api_router, prefix="/api/v1")
     app.include_router(websocket_router)

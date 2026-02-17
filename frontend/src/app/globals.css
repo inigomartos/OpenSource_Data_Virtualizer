@@ -73,3 +73,28 @@ body {
   transition-duration: 200ms;
   transition-timing-function: ease;
 }
+
+/* cmdk command palette */
+[cmdk-root] {
+  font-family: var(--font-body);
+}
+
+[cmdk-input] {
+  font-family: var(--font-body);
+}
+
+[cmdk-item] {
+  content-visibility: auto;
+}
+
+[cmdk-group-heading] {
+  user-select: none;
+}
+
+/* Line clamp utility */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

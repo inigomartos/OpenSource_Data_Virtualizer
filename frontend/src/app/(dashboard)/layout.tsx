@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Sidebar from '@/components/layout/sidebar';
 import Topbar from '@/components/layout/topbar';
+import { CommandPalette } from '@/components/command-palette';
 
 export default function DashboardLayout({
   children,
@@ -37,6 +38,7 @@ export default function DashboardLayout({
         <Topbar />
         <main className="flex-1 p-6 overflow-auto">{children}</main>
       </div>
+      <CommandPalette />
     </div>
   );
 }

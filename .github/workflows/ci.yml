@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install backend deps
+        run: cd backend && pip install -r requirements.txt
+      - name: Lint backend
+        run: cd backend && ruff check .
+      - name: Type check backend
+        run: cd backend && mypy app/ --ignore-missing-imports
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install frontend deps
+        run: cd frontend && npm ci
+      - name: Lint frontend
+        run: cd frontend && npm run lint
+
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: datamind_test
+          POSTGRES_USER: datamind
+          POSTGRES_PASSWORD: testpass
+        ports:
+          - 5432:5432
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL: postgresql+asyncpg://datamind:testpass@localhost:5432/datamind_test
+      REDIS_URL: redis://localhost:6379/0
+      JWT_SECRET: test-secret-key-for-ci
+      ENCRYPTION_KEY: dGVzdC1lbmNyeXB0aW9uLWtleS1mb3ItY2k=
+      ANTHROPIC_API_KEY: sk-test-key
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: cd backend && pip install -r requirements.txt
+      - name: Run unit tests
+        run: cd backend && pytest tests/unit -v --cov=app --cov-report=xml
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          file: backend/coverage.xml
+
+  build:
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build backend Docker image
+        run: docker build -t datamind-backend backend/
+      - name: Build frontend
+        run: |
+          cd frontend
+          npm ci
+          npm run build
