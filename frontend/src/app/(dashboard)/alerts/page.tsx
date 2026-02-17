@@ -59,7 +59,7 @@ export default function AlertsPage() {
     try {
       setError(null);
       const data = await apiClient('/alerts');
-      setAlerts(data.alerts || []);
+      setAlerts(Array.isArray(data?.data) ? data.data : (Array.isArray(data) ? data : []));
     } catch (err: any) {
       setError(err.message || 'Failed to load alerts');
     } finally {

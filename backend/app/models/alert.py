@@ -32,7 +32,7 @@ class Alert(BaseModel):
     last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_value: Mapped[Decimal | None] = mapped_column(Numeric(20, 4), nullable=True)
     consecutive_failures: Mapped[int] = mapped_column(Integer, default=0)
-    notification_channels: Mapped[dict] = mapped_column(JSONB, default=lambda: ["in_app"])
+    notification_channels: Mapped[list] = mapped_column(JSONB, default=lambda: ["in_app"])
 
     # Relationships
     organization = relationship("Organization", back_populates="alerts")

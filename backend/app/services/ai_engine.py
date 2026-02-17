@@ -1,7 +1,7 @@
 """
 DataMind AI Engine
 ==================
-Orchestrates: User Question → Schema Context → Claude (NL→SQL) → Execute → Claude (Analyze+Visualize) → Response
+Orchestrates: User Question -> Schema Context -> Claude (NL->SQL) -> Execute -> Claude (Analyze+Visualize) -> Response
 
 DESIGN DECISIONS (v2):
   - Dependencies are INJECTED, not instantiated internally (testability)
@@ -31,7 +31,7 @@ class SchemaProvider(Protocol):
 
 class QueryRunner(Protocol):
     async def execute(self, connection_id: str, sql: str, db: AsyncSession,
-                      timeout_seconds: int, max_rows: int) -> dict: ...
+                      timeout_seconds: int, max_rows: int, skip_validation: bool = False) -> dict: ...
 
 
 class CacheProvider(Protocol):
@@ -76,7 +76,7 @@ class AIEngine:
             2. Load condensed conversation history
             3. Generate SQL via Claude
             4. Validate SQL via sqlglot parser
-            5. Check cache → execute if miss
+            5. Check cache -> execute if miss
             6. Analyze results + recommend chart (single Claude call)
             7. Return response
         """
@@ -108,7 +108,7 @@ class AIEngine:
                 token_usage=sql_response.get("token_usage"),
             )
 
-        # Step 4: Validate SQL (sqlglot parser — NOT regex)
+        # Step 4: Validate SQL (sqlglot parser -- NOT regex)
         validation = self.sql_validator.validate(generated_sql)
         if not validation["is_safe"]:
             return ChatResponse(
@@ -118,7 +118,7 @@ class AIEngine:
                 error_message=validation["reason"],
             )
 
-        # Step 5: Check Cache → Execute
+        # Step 5: Check Cache -> Execute
         cache_key = hashlib.sha256(f"{connection_id}:{generated_sql}".encode()).hexdigest()
         cached = await self.cache.get(cache_key)
 
@@ -132,8 +132,45 @@ class AIEngine:
                 db=db,
                 timeout_seconds=30,
                 max_rows=10000,
+                skip_validation=True,
             )
 
+            # Retry logic: if SQL execution failed, retry once with error context
+            if execution_result.get("error"):
+                retry_prompt = (
+                    f"The SQL query failed with error: {execution_result['error']}. "
+                    f"Original question: {user_message}\n"
+                    f"Please fix the SQL and try again."
+                )
+                retry_response = await self.sql_generator.generate(
+                    user_message=retry_prompt,
+                    schema_context=schema_context,
+                    conversation_history=history,
+                    on_stream=on_stream,
+                )
+                retry_sql = retry_response.get("sql")
+                if retry_sql and retry_sql not in ("CANNOT_ANSWER", "NOT_DATA_QUERY"):
+                    # Validate the retry SQL
+                    retry_validation = self.sql_validator.validate(retry_sql)
+                    if retry_validation["is_safe"]:
+                        # Merge token usage from retry attempt
+                        sql_response_tokens = sql_response.get("token_usage", {})
+                        retry_tokens = retry_response.get("token_usage", {})
+                        sql_response["token_usage"] = {
+                            "input_tokens": sql_response_tokens.get("input_tokens", 0) + retry_tokens.get("input_tokens", 0),
+                            "output_tokens": sql_response_tokens.get("output_tokens", 0) + retry_tokens.get("output_tokens", 0),
+                        }
+                        generated_sql = retry_sql
+                        execution_result = await self.query_runner.execute(
+                            connection_id=connection_id,
+                            sql=retry_sql,
+                            db=db,
+                            timeout_seconds=30,
+                            max_rows=10000,
+                            skip_validation=True,
+                        )
+
+            # If still an error after retry, return it to the user
             if execution_result.get("error"):
                 return ChatResponse(
                     content=f"I ran into an issue querying your data: {execution_result['error']}. "
@@ -152,6 +189,14 @@ class AIEngine:
             on_stream=on_stream,
         )
 
+        # Merge token usage from both steps
+        sql_tokens = sql_response.get("token_usage", {})
+        analysis_tokens = analysis.get("token_usage", {})
+        total_tokens = {
+            "input_tokens": sql_tokens.get("input_tokens", 0) + analysis_tokens.get("input_tokens", 0),
+            "output_tokens": sql_tokens.get("output_tokens", 0) + analysis_tokens.get("output_tokens", 0),
+        }
+
         return ChatResponse(
             content=analysis["insight"],
             context_summary=analysis["context_summary"],
@@ -160,7 +205,7 @@ class AIEngine:
             full_result_row_count=execution_result["data"].get("row_count", 0),
             chart_config=analysis["chart_config"],
             execution_time_ms=execution_result.get("execution_time_ms"),
-            token_usage=sql_response.get("token_usage"),
+            token_usage=total_tokens,
         )
 
     def _truncate_result(self, data: dict, max_rows: int = 100) -> dict:

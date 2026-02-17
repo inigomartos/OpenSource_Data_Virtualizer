@@ -67,13 +67,6 @@ body {
   background: var(--text-muted);
 }
 
-/* Smooth transitions */
-* {
-  transition-property: color, background-color, border-color, box-shadow;
-  transition-duration: 200ms;
-  transition-timing-function: ease;
-}
-
 /* cmdk command palette */
 [cmdk-root] {
   font-family: var(--font-body);

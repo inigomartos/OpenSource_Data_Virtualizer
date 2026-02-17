@@ -1,4 +1,4 @@
-"""Safe SQL execution: sqlglot parse → read-only user → timeout."""
+"""Safe SQL execution: sqlglot parse -> read-only user -> timeout."""
 
 import time
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,44 +21,49 @@ class QueryExecutor:
         db: AsyncSession,
         timeout_seconds: int = QUERY_TIMEOUT_SECONDS,
         max_rows: int = MAX_QUERY_ROWS,
+        skip_validation: bool = False,
     ) -> dict:
         """Execute SQL with safety validation and resource limits."""
-        # Validate SQL
-        validation = self.validator.validate(sql)
-        if not validation["is_safe"]:
-            return {
-                "data": {"columns": [], "rows": [], "row_count": 0},
-                "error": f"SQL validation failed: {validation['reason']}",
-                "execution_time_ms": 0,
-            }
-
-        try:
-            connector = await self.connection_manager.get_connector(connection_id, db)
-
-            start = time.perf_counter()
-            result = await connector.execute_query(
-                sql=validation.get("parsed_sql", sql),
-                timeout=timeout_seconds,
-                max_rows=max_rows,
-            )
-            elapsed_ms = int((time.perf_counter() - start) * 1000)
-
-            if result.error:
+        # Validate SQL (unless caller already validated, e.g. AI engine)
+        if not skip_validation:
+            validation = self.validator.validate(sql)
+            if not validation["is_safe"]:
                 return {
                     "data": {"columns": [], "rows": [], "row_count": 0},
-                    "error": result.error,
+                    "error": f"SQL validation failed: {validation['reason']}",
+                    "execution_time_ms": 0,
+                }
+            sql = validation.get("parsed_sql", sql)
+
+        try:
+            connector = await self.connection_manager.get_connector_internal(connection_id, db)
+            try:
+                start = time.perf_counter()
+                result = await connector.execute_query(
+                    sql=sql,
+                    timeout=timeout_seconds,
+                    max_rows=max_rows,
+                )
+                elapsed_ms = int((time.perf_counter() - start) * 1000)
+
+                if result.error:
+                    return {
+                        "data": {"columns": [], "rows": [], "row_count": 0},
+                        "error": result.error,
+                        "execution_time_ms": elapsed_ms,
+                    }
+
+                return {
+                    "data": {
+                        "columns": result.columns,
+                        "rows": result.rows,
+                        "row_count": result.row_count,
+                    },
+                    "error": None,
                     "execution_time_ms": elapsed_ms,
                 }
-
-            return {
-                "data": {
-                    "columns": result.columns,
-                    "rows": result.rows,
-                    "row_count": result.row_count,
-                },
-                "error": None,
-                "execution_time_ms": elapsed_ms,
-            }
+            finally:
+                await connector.close()
 
         except Exception as e:
             logger.error(f"Query execution error: {e}")

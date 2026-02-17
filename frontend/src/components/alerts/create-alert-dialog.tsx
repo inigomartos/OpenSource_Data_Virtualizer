@@ -58,7 +58,7 @@ export function CreateAlertDialog({ open, onOpenChange, onCreated }: CreateAlert
     if (open) {
       setLoadingConnections(true);
       apiClient('/connections')
-        .then((data) => setConnections(data.connections || []))
+        .then((data) => setConnections(data?.data || []))
         .catch(() => setConnections([]))
         .finally(() => setLoadingConnections(false));
       setForm(initialForm);
@@ -118,9 +118,9 @@ export function CreateAlertDialog({ open, onOpenChange, onCreated }: CreateAlert
           name: form.name.trim(),
           description: form.description.trim() || undefined,
           connection_id: form.connection_id,
-          sql_query: form.sql_query.trim(),
+          query_sql: form.sql_query.trim(),
           condition_type: form.condition_type,
-          threshold: form.condition_type !== 'anomaly' ? parseFloat(form.threshold) : 0,
+          threshold_value: form.condition_type !== 'anomaly' ? parseFloat(form.threshold) : 0,
           check_interval_minutes: parseInt(form.check_interval_minutes, 10),
         }),
       });

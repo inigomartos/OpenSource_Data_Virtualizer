@@ -1,5 +1,6 @@
 import useSWR, { mutate as globalMutate } from 'swr';
 import { apiClient } from '@/lib/api-client';
+import { ListResponse } from '@/types/common';
 import type {
   Dashboard,
   DashboardWithWidgets,
@@ -11,13 +12,13 @@ import type {
 } from '@/types/dashboard';
 
 export function useDashboards() {
-  const { data, error, mutate } = useSWR<{ dashboards: Dashboard[] }>(
+  const { data, error, mutate } = useSWR<ListResponse<Dashboard>>(
     '/dashboards',
     apiClient
   );
 
   return {
-    dashboards: data?.dashboards || [],
+    dashboards: data?.data || [],
     isLoading: !error && !data,
     error,
     refresh: mutate,

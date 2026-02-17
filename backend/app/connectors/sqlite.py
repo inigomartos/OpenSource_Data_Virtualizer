@@ -34,14 +34,16 @@ class SQLiteConnector(BaseConnector):
         rows = await cursor.fetchall()
         tables = []
         for row in rows:
-            count_cursor = await conn.execute(f'SELECT COUNT(*) FROM "{row[0]}"')
+            escaped_name = row[0].replace('"', '""')
+            count_cursor = await conn.execute(f'SELECT COUNT(*) FROM "{escaped_name}"')
             count = await count_cursor.fetchone()
             tables.append(TableInfo(name=row[0], table_type=row[1], row_count=count[0] if count else 0))
         return tables
 
     async def get_columns(self, table_name: str) -> list[ColumnInfo]:
         conn = await self._get_conn()
-        cursor = await conn.execute(f'PRAGMA table_info("{table_name}")')
+        escaped_table = table_name.replace('"', '""')
+        cursor = await conn.execute(f'PRAGMA table_info("{escaped_table}")')
         rows = await cursor.fetchall()
         return [
             ColumnInfo(
@@ -76,8 +78,10 @@ class SQLiteConnector(BaseConnector):
 
     async def get_sample_values(self, table: str, column: str, limit: int = 10) -> list:
         conn = await self._get_conn()
+        escaped_column = column.replace('"', '""')
+        escaped_table = table.replace('"', '""')
         cursor = await conn.execute(
-            f'SELECT DISTINCT "{column}" FROM "{table}" WHERE "{column}" IS NOT NULL LIMIT ?',
+            f'SELECT DISTINCT "{escaped_column}" FROM "{escaped_table}" WHERE "{escaped_column}" IS NOT NULL LIMIT ?',
             (limit,),
         )
         rows = await cursor.fetchall()

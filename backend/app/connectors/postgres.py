@@ -16,8 +16,20 @@ class PostgreSQLConnector(BaseConnector):
         self.ssl_mode = ssl_mode
         self._pool = None
 
+    @staticmethod
+    def _quote_ident(identifier: str) -> str:
+        escaped = identifier.replace('"', '""')
+        return f'"{escaped}"'
+
     async def _get_pool(self):
         if self._pool is None:
+            ssl_context = None
+            if self.ssl_mode and self.ssl_mode != "disable":
+                import ssl as ssl_module
+                ssl_context = ssl_module.create_default_context()
+                if self.ssl_mode in ("prefer", "allow"):
+                    ssl_context.check_hostname = False
+                    ssl_context.verify_mode = ssl_module.CERT_NONE
             self._pool = await asyncpg.create_pool(
                 host=self.host,
                 port=self.port,
@@ -27,6 +39,7 @@ class PostgreSQLConnector(BaseConnector):
                 min_size=1,
                 max_size=5,
                 command_timeout=30,
+                ssl=ssl_context,
             )
         return self._pool
 
@@ -136,7 +149,7 @@ class PostgreSQLConnector(BaseConnector):
         pool = await self._get_pool()
         async with pool.acquire() as conn:
             rows = await conn.fetch(
-                f'SELECT DISTINCT "{column}" FROM "{table}" WHERE "{column}" IS NOT NULL LIMIT $1',
+                f'SELECT DISTINCT {self._quote_ident(column)} FROM {self._quote_ident(table)} WHERE {self._quote_ident(column)} IS NOT NULL LIMIT $1',
                 limit,
             )
             return [row[column] for row in rows]

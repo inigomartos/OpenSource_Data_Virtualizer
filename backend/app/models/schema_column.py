@@ -2,7 +2,7 @@
 
 import uuid
 from decimal import Decimal
-from sqlalchemy import String, Boolean, Integer, BigInteger, Text, ForeignKey, Numeric
+from sqlalchemy import String, Boolean, Integer, BigInteger, Text, ForeignKey, Numeric, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -12,7 +12,7 @@ from app.models.base import BaseModel
 class SchemaColumn(BaseModel):
     __tablename__ = "schema_columns"
     __table_args__ = (
-        {"info": {"unique_together": ("schema_table_id", "column_name")}},
+        UniqueConstraint("schema_table_id", "column_name", name="uq_schema_col_table_name"),
     )
 
     schema_table_id: Mapped[uuid.UUID] = mapped_column(

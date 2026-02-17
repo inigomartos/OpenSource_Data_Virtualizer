@@ -22,3 +22,9 @@ class PaginatedResponse(BaseModel):
 class ErrorResponse(BaseModel):
     detail: str
     error_code: Optional[str] = None
+
+
+class ListResponse(BaseModel, Generic[T]):
+    """Standard envelope for list endpoints."""
+    data: list[T]
+    count: int

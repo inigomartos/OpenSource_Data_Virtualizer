@@ -1,7 +1,7 @@
 """User model with org membership."""
 
 import uuid
-from sqlalchemy import String, Boolean, Text, ForeignKey
+from sqlalchemy import String, Boolean, Text, ForeignKey, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -11,8 +11,7 @@ from app.models.base import BaseModel
 class User(BaseModel):
     __tablename__ = "users"
     __table_args__ = (
-        # Email unique within org
-        {"info": {"unique_together": ("org_id", "email")}},
+        UniqueConstraint("org_id", "email", name="uq_user_org_email"),
     )
 
     org_id: Mapped[uuid.UUID] = mapped_column(

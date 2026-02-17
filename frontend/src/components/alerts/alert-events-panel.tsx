@@ -28,7 +28,7 @@ export function AlertEventsPanel({ alertId, alertName, onClose }: AlertEventsPro
   const fetchEvents = useCallback(async () => {
     try {
       const data = await apiClient(`/alerts/${alertId}/events`);
-      setEvents(data.events || []);
+      setEvents(data?.data || []);
     } catch {
       setEvents([]);
     } finally {

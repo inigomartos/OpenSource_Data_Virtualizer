@@ -21,12 +21,13 @@ from app.schemas.alert import (
     AlertWithEvents,
     AlertEventResponse,
 )
+from app.schemas.common import ListResponse
 
 router = APIRouter()
 sql_validator = SQLSafetyValidator()
 
 
-@router.get("/events/unread", response_model=list[AlertEventResponse])
+@router.get("/events/unread", response_model=ListResponse[AlertEventResponse])
 async def get_unread_events(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -40,10 +41,27 @@ async def get_unread_events(
         .limit(50)
     )
     events = result.scalars().all()
-    return events
+    return {"data": events, "count": len(events)}
 
 
-@router.get("/", response_model=list[AlertResponse])
+@router.post("/events/read-all", status_code=200)
+async def mark_all_events_read(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(AlertEvent)
+        .join(Alert, AlertEvent.alert_id == Alert.id)
+        .where(Alert.org_id == user.org_id, AlertEvent.is_read == False)
+    )
+    events = result.scalars().all()
+    for event in events:
+        event.is_read = True
+    await db.flush()
+    return {"marked_read": len(events)}
+
+
+@router.get("/", response_model=ListResponse[AlertResponse])
 async def list_alerts(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -55,7 +73,7 @@ async def list_alerts(
         .order_by(Alert.created_at.desc())
     )
     alerts = result.scalars().all()
-    return alerts
+    return {"data": alerts, "count": len(alerts)}
 
 
 @router.post("/", status_code=201, response_model=AlertResponse)
@@ -176,7 +194,7 @@ async def delete_alert(
     return None
 
 
-@router.get("/{alert_id}/events", response_model=list[AlertEventResponse])
+@router.get("/{alert_id}/events", response_model=ListResponse[AlertEventResponse])
 async def get_alert_events(
     alert_id: uuid.UUID,
     offset: int = Query(default=0, ge=0),
@@ -200,7 +218,7 @@ async def get_alert_events(
         .limit(limit)
     )
     events = result.scalars().all()
-    return events
+    return {"data": events, "count": len(events)}
 
 
 @router.post("/{alert_id}/toggle", response_model=AlertResponse)

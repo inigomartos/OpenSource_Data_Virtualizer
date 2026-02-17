@@ -42,8 +42,8 @@ export default function AddWidgetDialog({
       setFreeformSql('');
       setSelectedConnectionId(connections[0]?.id || '');
 
-      apiClient<{ queries: SavedQuery[] }>('/queries/saved')
-        .then((data) => setSavedQueries(data.queries || []))
+      apiClient<{ data: SavedQuery[] }>('/query/saved')
+        .then((data) => setSavedQueries(data?.data || []))
         .catch(() => setSavedQueries([]))
         .finally(() => setLoadingQueries(false));
     }

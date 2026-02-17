@@ -29,7 +29,7 @@ export function NotificationBell() {
   const fetchUnread = useCallback(async () => {
     try {
       const data = await apiClient('/alerts/events/unread');
-      const unreadEvents: UnreadEvent[] = data.events || [];
+      const unreadEvents: UnreadEvent[] = data?.data || [];
       setEvents(unreadEvents);
       setUnreadCount(unreadEvents.length);
     } catch {

@@ -1,6 +1,7 @@
 """Application configuration via environment variables."""
 
 from pydantic_settings import BaseSettings
+from pydantic import model_validator
 from typing import List
 
 
@@ -16,6 +17,7 @@ class Settings(BaseSettings):
 
     # Auth
     JWT_SECRET: str = "change-me"
+    JWT_REFRESH_SECRET: str = "change-me-refresh"
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
@@ -30,6 +32,22 @@ class Settings(BaseSettings):
     DEBUG: bool = False
 
     model_config = {"env_file": ".env", "extra": "ignore"}
+
+    @model_validator(mode='after')
+    def _reject_insecure_defaults(self) -> "Settings":
+        insecure = []
+        if self.JWT_SECRET == "change-me":
+            insecure.append("JWT_SECRET")
+        if self.JWT_REFRESH_SECRET == "change-me-refresh":
+            insecure.append("JWT_REFRESH_SECRET")
+        if self.ENCRYPTION_KEY == "change-me":
+            insecure.append("ENCRYPTION_KEY")
+        if insecure:
+            raise ValueError(
+                f"Insecure default value(s) detected for: {', '.join(insecure)}. "
+                "Please set secure secret(s) via environment variables or .env file."
+            )
+        return self
 
 
 settings = Settings()

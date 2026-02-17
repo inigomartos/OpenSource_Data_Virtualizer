@@ -1,7 +1,7 @@
 """Schema table metadata — normalized from old schema_cache."""
 
 import uuid
-from sqlalchemy import String, BigInteger, Text, ForeignKey
+from sqlalchemy import String, BigInteger, Text, ForeignKey, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -11,7 +11,7 @@ from app.models.base import BaseModel
 class SchemaTable(BaseModel):
     __tablename__ = "schema_tables"
     __table_args__ = (
-        {"info": {"unique_together": ("connection_id", "table_name")}},
+        UniqueConstraint("connection_id", "table_name", name="uq_schema_table_conn_name"),
     )
 
     connection_id: Mapped[uuid.UUID] = mapped_column(

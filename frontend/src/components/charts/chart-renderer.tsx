@@ -5,6 +5,7 @@ import BarChartComponent from './bar-chart';
 import LineChartComponent from './line-chart';
 import PieChartComponent from './pie-chart';
 import AreaChartComponent from './area-chart';
+import ScatterChartComponent from './scatter-chart';
 import KPICard from './kpi-card';
 import DataTable from './data-table';
 
@@ -66,6 +67,15 @@ export default function ChartRenderer({ config, data }: Props) {
           data={chartData}
           nameKey={config.x_column || data.columns[0]}
           valueKey={config.y_column || data.columns[1]}
+          title={config.title}
+        />
+      );
+    case 'scatter':
+      return (
+        <ScatterChartComponent
+          data={chartData}
+          xKey={config.x_column || data.columns[0]}
+          yKey={config.y_column || data.columns[1]}
           title={config.title}
         />
       );

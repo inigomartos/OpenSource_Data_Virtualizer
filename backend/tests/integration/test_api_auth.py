@@ -52,7 +52,7 @@ class TestAuthAPI:
             "email": "wrong@test.com",
             "password": "wrongpassword",
         })
-        assert response.status_code in [401, 500]
+        assert response.status_code == 401
 
     async def test_health_check(self, client: AsyncClient):
         response = await client.get("/api/v1/health")

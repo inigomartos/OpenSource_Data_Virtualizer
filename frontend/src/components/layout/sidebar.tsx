@@ -2,6 +2,9 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { MessageSquare, Database, LayoutDashboard, Search, Bell, Settings, type LucideIcon } from 'lucide-react';
+
+const iconMap: Record<string, LucideIcon> = { MessageSquare, Database, LayoutDashboard, Search, Bell, Settings };
 
 const navItems = [
   { href: '/chat', label: 'Chat', icon: 'MessageSquare' },
@@ -36,7 +39,7 @@ export default function Sidebar() {
                   : 'text-text-secondary hover:text-text-primary hover:bg-bg-elevated'
               }`}
             >
-              <span className="w-5 h-5" />
+              {(() => { const Icon = iconMap[item.icon]; return Icon ? <Icon className="w-5 h-5" /> : null; })()}
               {item.label}
             </Link>
           );

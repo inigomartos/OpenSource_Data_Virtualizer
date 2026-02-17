@@ -27,8 +27,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.requests: dict[str, list[float]] = {}  # ip -> [timestamps]
 
     async def dispatch(self, request: Request, call_next):
-        # Get client IP
-        client_ip = request.client.host if request.client else "unknown"
+        # Get client IP (prefer X-Forwarded-For for proxied requests)
+        forwarded_for = request.headers.get("X-Forwarded-For")
+        if forwarded_for:
+            client_ip = forwarded_for.split(",")[0].strip()
+        else:
+            client_ip = request.client.host if request.client else "unknown"
 
         # Skip rate limiting for health checks
         if request.url.path.endswith("/health"):
@@ -36,6 +40,15 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         now = time.time()
         window = 60  # 1 minute window
+
+        # Periodic pruning: remove stale IPs when map grows too large
+        if len(self.requests) > 1000:
+            stale_ips = [
+                ip for ip, timestamps in self.requests.items()
+                if not timestamps or now - timestamps[-1] >= window
+            ]
+            for ip in stale_ips:
+                del self.requests[ip]
 
         # Clean old entries and check rate
         if client_ip not in self.requests:

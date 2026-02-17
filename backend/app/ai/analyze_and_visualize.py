@@ -1,4 +1,4 @@
-"""Merged insight + chart recommendation — single Claude API call."""
+"""Merged insight + chart recommendation -- single Claude API call."""
 
 import json
 from typing import Optional
@@ -44,13 +44,29 @@ class AnalyzeAndVisualize:
         )
 
         response_text = response.content[0].text
+        token_usage = {
+            "input_tokens": response.usage.input_tokens,
+            "output_tokens": response.usage.output_tokens,
+        }
+
+        # Strip markdown code fences before parsing JSON
+        cleaned = response_text.strip()
+        if cleaned.startswith("```"):
+            first_newline = cleaned.find("\n")
+            if first_newline != -1:
+                cleaned = cleaned[first_newline + 1:]
+            else:
+                cleaned = cleaned[3:]
+        if cleaned.rstrip().endswith("```"):
+            cleaned = cleaned.rstrip()[:-3].rstrip()
 
         try:
-            parsed = json.loads(response_text)
+            parsed = json.loads(cleaned)
             return {
                 "insight": parsed.get("content", "Analysis complete."),
                 "context_summary": parsed.get("context_summary", ""),
                 "chart_config": parsed.get("chart_config", {"chart_type": "table", "title": "Results"}),
+                "token_usage": token_usage,
             }
         except json.JSONDecodeError:
             logger.warning(f"Failed to parse analysis response as JSON: {response_text[:200]}")
@@ -58,6 +74,7 @@ class AnalyzeAndVisualize:
                 "insight": response_text,
                 "context_summary": "Analysis provided as text.",
                 "chart_config": {"chart_type": "table", "title": "Results"},
+                "token_usage": token_usage,
             }
 
     def _format_result_preview(self, columns: list[str], rows: list[list]) -> str:

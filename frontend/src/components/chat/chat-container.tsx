@@ -1,16 +1,63 @@
 'use client';
 
-import { useState } from 'react';
 import { useChatStore } from '@/stores/chat-store';
 import { useConnectionStore } from '@/stores/connection-store';
+import { apiClient } from '@/lib/api-client';
 import ChatInput from './chat-input';
 import MessageBubble from './message-bubble';
 import SessionSidebar from './session-sidebar';
 import SuggestedQuestions from './suggested-questions';
 
 export default function ChatContainer() {
-  const { messages, isLoading } = useChatStore();
+  const { messages, isLoading, addMessage, setLoading, activeSessionId } = useChatStore();
   const { activeConnectionId } = useConnectionStore();
+
+  const handleSend = async (text: string) => {
+    if (!text.trim() || isLoading || !activeConnectionId) return;
+
+    addMessage({
+      id: crypto.randomUUID(),
+      role: 'user',
+      content: text.trim(),
+      created_at: new Date().toISOString(),
+    });
+
+    setLoading(true);
+
+    try {
+      const response = await apiClient('/chat/message', {
+        method: 'POST',
+        body: JSON.stringify({
+          message: text.trim(),
+          connection_id: activeConnectionId,
+          session_id: activeSessionId,
+        }),
+      });
+
+      addMessage({
+        id: response.message_id || crypto.randomUUID(),
+        role: 'assistant',
+        content: response.content,
+        generated_sql: response.generated_sql,
+        query_result_preview: response.query_result_preview,
+        full_result_row_count: response.full_result_row_count,
+        chart_config: response.chart_config,
+        execution_time_ms: response.execution_time_ms,
+        error_message: response.error_message,
+        created_at: new Date().toISOString(),
+      });
+    } catch (err: any) {
+      addMessage({
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: `Sorry, something went wrong: ${err.message}`,
+        error_message: err.message,
+        created_at: new Date().toISOString(),
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="h-full flex">
@@ -25,7 +72,7 @@ export default function ChatContainer() {
               <p className="text-text-secondary mb-8">
                 I&apos;ll generate SQL, run it, and visualize the results for you.
               </p>
-              <SuggestedQuestions />
+              <SuggestedQuestions onSelect={(question) => handleSend(question)} />
             </div>
           )}
 

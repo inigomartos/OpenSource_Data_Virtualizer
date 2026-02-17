@@ -11,18 +11,21 @@ import uuid
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.requests import Request
 
 from app.core.database import get_db
 from app.core.exceptions import raise_not_found
 from app.core.security import encrypt_value
-from app.dependencies import get_current_user
+from app.dependencies import get_current_user, require_role
 from app.models.connection import Connection
 from app.models.user import User
+from app.schemas.common import ListResponse
 from app.schemas.connection import (
     ConnectionCreate,
     ConnectionResponse,
     ConnectionTestResult,
 )
+from app.services.audit_service import AuditService
 from app.services.connection_manager import ConnectionManager
 
 router = APIRouter()
@@ -51,7 +54,7 @@ async def _get_connection_or_404(
 
 # ── CRUD Endpoints ───────────────────────────────────────────────────────────
 
-@router.get("/", response_model=list[ConnectionResponse])
+@router.get("/", response_model=ListResponse[ConnectionResponse])
 async def list_connections(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -63,14 +66,15 @@ async def list_connections(
         .order_by(Connection.created_at.desc())
     )
     connections = result.scalars().all()
-    return connections
+    return {"data": connections, "count": len(connections)}
 
 
 @router.post("/", response_model=ConnectionResponse, status_code=201)
 async def create_connection(
     payload: ConnectionCreate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_role("admin", "analyst")),
 ):
     """Create a new data connection.
 
@@ -98,6 +102,16 @@ async def create_connection(
     db.add(connection)
     await db.flush()
     await db.refresh(connection)
+    try:
+        await AuditService.log(
+            db=db, org_id=user.org_id, user_id=user.id,
+            action="connection.create",
+            resource_type="connection",
+            resource_id=str(connection.id),
+            ip_address=request.client.host if request.client else None,
+        )
+    except Exception:
+        pass  # Don't block main operation if audit fails
     return connection
 
 
@@ -117,15 +131,27 @@ async def get_connection(
 @router.delete("/{connection_id}", status_code=204)
 async def delete_connection(
     connection_id: uuid.UUID,
+    request: Request,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_role("admin")),
 ):
     """Delete a connection from the caller's organization."""
     connection = await _get_connection_or_404(
         connection_id, user.org_id, db,
     )
+    connection_id_str = str(connection.id)
     await db.delete(connection)
     await db.flush()
+    try:
+        await AuditService.log(
+            db=db, org_id=user.org_id, user_id=user.id,
+            action="connection.delete",
+            resource_type="connection",
+            resource_id=connection_id_str,
+            ip_address=request.client.host if request.client else None,
+        )
+    except Exception:
+        pass  # Don't block main operation if audit fails
     return None
 
 

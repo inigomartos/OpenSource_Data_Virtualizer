@@ -37,6 +37,9 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
     """WebSocket endpoint with JWT authentication on handshake."""
     try:
         payload = decode_jwt(token)
+        if payload.get("type") != "access":
+            await websocket.close(code=4001, reason="Invalid token type")
+            return
         user_id = payload.get("sub")
         if not user_id:
             await websocket.close(code=4001, reason="Invalid token")

@@ -35,12 +35,17 @@ def create_refresh_token(data: dict) -> str:
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + timedelta(days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS)
     to_encode.update({"exp": expire, "type": "refresh"})
-    return jwt.encode(to_encode, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
+    return jwt.encode(to_encode, settings.JWT_REFRESH_SECRET, algorithm=settings.JWT_ALGORITHM)
 
 
 def decode_jwt(token: str) -> dict[str, Any]:
-    """Decode and validate a JWT token. Raises JWTError on failure."""
+    """Decode and validate an access JWT token. Raises JWTError on failure."""
     return jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
+
+
+def decode_refresh_jwt(token: str) -> dict[str, Any]:
+    """Decode and validate a refresh JWT token. Raises JWTError on failure."""
+    return jwt.decode(token, settings.JWT_REFRESH_SECRET, algorithms=[settings.JWT_ALGORITHM])
 
 
 def _get_fernet() -> Fernet:

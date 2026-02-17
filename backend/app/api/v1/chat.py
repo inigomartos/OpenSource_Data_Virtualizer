@@ -29,6 +29,7 @@ from app.schemas.chat import (
     ChatSessionResponse,
     ChatSessionUpdate,
 )
+from app.schemas.common import ListResponse
 
 router = APIRouter()
 
@@ -111,7 +112,7 @@ async def send_message(
 
 @router.get(
     "/history/{session_id}",
-    response_model=list[ChatMessageResponse],
+    response_model=ListResponse[ChatMessageResponse],
 )
 async def get_history(
     session_id: uuid.UUID,
@@ -128,12 +129,12 @@ async def get_history(
         .order_by(ChatMessage.created_at.asc())
     )
     messages = result.scalars().all()
-    return messages
+    return {"data": messages, "count": len(messages)}
 
 
 # ── Session Endpoints ────────────────────────────────────────────────────────
 
-@router.get("/sessions", response_model=list[ChatSessionResponse])
+@router.get("/sessions", response_model=ListResponse[ChatSessionResponse])
 async def list_sessions(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -145,7 +146,7 @@ async def list_sessions(
         .order_by(ChatSession.updated_at.desc())
     )
     sessions = result.scalars().all()
-    return sessions
+    return {"data": sessions, "count": len(sessions)}
 
 
 @router.delete("/sessions/{session_id}", status_code=204)

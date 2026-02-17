@@ -105,11 +105,13 @@ class MySQLConnector(BaseConnector):
             return QueryResult(columns=[], rows=[], row_count=0, execution_time_ms=elapsed, error=str(e))
 
     async def get_sample_values(self, table: str, column: str, limit: int = 10) -> list:
+        escaped_column = column.replace('`', '``')
+        escaped_table = table.replace('`', '``')
         pool = await self._get_pool()
         async with pool.acquire() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
-                    f"SELECT DISTINCT `{column}` FROM `{table}` WHERE `{column}` IS NOT NULL LIMIT %s",
+                    f"SELECT DISTINCT `{escaped_column}` FROM `{escaped_table}` WHERE `{escaped_column}` IS NOT NULL LIMIT %s",
                     (limit,),
                 )
                 rows = await cur.fetchall()

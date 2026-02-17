@@ -28,6 +28,8 @@ class DashboardResponse(BaseModel):
     is_shared: bool
     layout_config: dict
     created_at: datetime
+    updated_at: Optional[datetime] = None
+    widget_count: int = 0
 
     model_config = {"from_attributes": True}
 
@@ -78,7 +80,7 @@ class DashboardWithWidgets(DashboardResponse):
 
 class WidgetRefreshResponse(BaseModel):
     widget_id: uuid.UUID
-    data: Optional[dict] = None
+    query_result_preview: Optional[dict] = None
     last_refreshed_at: Optional[datetime] = None
     error: Optional[str] = None
 

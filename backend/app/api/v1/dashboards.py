@@ -8,19 +8,23 @@ dashboard belongs to the caller's org.
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from starlette.requests import Request
 
 from app.core.database import get_db
 from app.core.exceptions import raise_not_found, raise_forbidden
+from app.core.sql_validator import SQLSafetyValidator
 from app.dependencies import get_current_user
+from app.models.connection import Connection
 from app.models.dashboard import Dashboard
 from app.models.widget import Widget
 from app.models.chat_message import ChatMessage
 from app.models.chat_session import ChatSession
 from app.models.user import User
+from app.schemas.common import ListResponse
 from app.schemas.dashboard import (
     DashboardCreate,
     DashboardUpdate,
@@ -32,10 +36,12 @@ from app.schemas.dashboard import (
     WidgetRefreshResponse,
     PinFromChatRequest,
 )
+from app.services.audit_service import AuditService
 from app.services.connection_manager import ConnectionManager
 
 router = APIRouter()
 connection_manager = ConnectionManager()
+sql_validator = SQLSafetyValidator()
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -81,24 +87,37 @@ async def _get_widget_or_404(
 
 # ── Dashboard CRUD ───────────────────────────────────────────────────────────
 
-@router.get("/", response_model=list[DashboardResponse])
+@router.get("/", response_model=ListResponse[DashboardResponse])
 async def list_dashboards(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     """List all dashboards belonging to the caller's organization."""
+    widget_count_sq = (
+        select(func.count(Widget.id))
+        .where(Widget.dashboard_id == Dashboard.id)
+        .correlate(Dashboard)
+        .scalar_subquery()
+        .label("widget_count")
+    )
     result = await db.execute(
-        select(Dashboard)
+        select(Dashboard, widget_count_sq)
         .where(Dashboard.org_id == user.org_id)
         .order_by(Dashboard.updated_at.desc())
     )
-    dashboards = result.scalars().all()
-    return dashboards
+    rows = result.all()
+    dashboards = []
+    for dashboard, wc in rows:
+        resp = DashboardResponse.model_validate(dashboard)
+        resp.widget_count = wc or 0
+        dashboards.append(resp)
+    return {"data": dashboards, "count": len(dashboards)}
 
 
 @router.post("/", response_model=DashboardResponse, status_code=201)
 async def create_dashboard(
     payload: DashboardCreate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -114,6 +133,16 @@ async def create_dashboard(
     db.add(dashboard)
     await db.flush()
     await db.refresh(dashboard)
+    try:
+        await AuditService.log(
+            db=db, org_id=user.org_id, user_id=user.id,
+            action="dashboard.create",
+            resource_type="dashboard",
+            resource_id=str(dashboard.id),
+            ip_address=request.client.host if request.client else None,
+        )
+    except Exception:
+        pass  # Don't block main operation if audit fails
     return dashboard
 
 
@@ -152,13 +181,25 @@ async def update_dashboard(
 @router.delete("/{dashboard_id}", status_code=204)
 async def delete_dashboard(
     dashboard_id: uuid.UUID,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     """Delete a dashboard and all of its widgets (cascade)."""
     dashboard = await _get_dashboard_or_404(dashboard_id, user.org_id, db)
+    dashboard_id_str = str(dashboard.id)
     await db.delete(dashboard)
     await db.flush()
+    try:
+        await AuditService.log(
+            db=db, org_id=user.org_id, user_id=user.id,
+            action="dashboard.delete",
+            resource_type="dashboard",
+            resource_id=dashboard_id_str,
+            ip_address=request.client.host if request.client else None,
+        )
+    except Exception:
+        pass  # Don't block main operation if audit fails
     return None
 
 
@@ -178,6 +219,20 @@ async def create_widget(
     """Add a new widget to a dashboard."""
     # Verify parent dashboard belongs to user's org
     await _get_dashboard_or_404(dashboard_id, user.org_id, db)
+
+    # Validate SQL if provided
+    if payload.query_sql:
+        validation = sql_validator.validate(payload.query_sql)
+        if not validation["is_safe"]:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"SQL validation failed: {validation['reason']}")
+
+    # Verify connection belongs to org
+    if payload.connection_id:
+        conn_result = await db.execute(
+            select(Connection).where(Connection.id == payload.connection_id, Connection.org_id == user.org_id)
+        )
+        if not conn_result.scalar_one_or_none():
+            raise_not_found("Connection")
 
     widget = Widget(
         dashboard_id=dashboard_id,
@@ -211,6 +266,13 @@ async def update_widget(
     widget = await _get_widget_or_404(widget_id, dashboard_id, db)
 
     update_data = payload.model_dump(exclude_unset=True)
+
+    # Validate SQL if being updated
+    if "query_sql" in update_data and update_data["query_sql"]:
+        validation = sql_validator.validate(update_data["query_sql"])
+        if not validation["is_safe"]:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"SQL validation failed: {validation['reason']}")
+
     for field, value in update_data.items():
         setattr(widget, field, value)
 
@@ -256,10 +318,16 @@ async def refresh_widget(
             error="Widget has no associated connection",
         )
 
+    # Validate SQL before executing
+    if widget.query_sql:
+        validation = sql_validator.validate(widget.query_sql)
+        if not validation["is_safe"]:
+            return WidgetRefreshResponse(widget_id=widget.id, error=f"Widget SQL is unsafe: {validation['reason']}")
+
     connector = None
     try:
         connector = await connection_manager.get_connector(
-            str(widget.connection_id), db,
+            str(widget.connection_id), str(user.org_id), db,
         )
         query_result = await connector.execute_query(widget.query_sql)
 
@@ -271,7 +339,7 @@ async def refresh_widget(
 
         return WidgetRefreshResponse(
             widget_id=widget.id,
-            data={
+            query_result_preview={
                 "columns": query_result.columns,
                 "rows": query_result.rows,
                 "row_count": query_result.row_count,

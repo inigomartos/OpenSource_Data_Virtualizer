@@ -1,4 +1,4 @@
-"""NL → SQL translation via Claude API."""
+"""NL -> SQL translation via Claude API."""
 
 import re
 from typing import Optional
@@ -48,8 +48,17 @@ class SQLGenerator:
         }
 
     def _extract_sql(self, text: str) -> str:
-        """Extract SQL from <sql> tags."""
+        """Extract SQL from <sql> tags, ```sql fences, or generic code fences."""
+        # Try <sql> tags first
         match = re.search(r"<sql>(.*?)</sql>", text, re.DOTALL)
+        if match:
+            return match.group(1).strip()
+        # Fallback: try ```sql code fences
+        match = re.search(r"```sql\s*(.*?)```", text, re.DOTALL)
+        if match:
+            return match.group(1).strip()
+        # Fallback: try generic code fences with SELECT
+        match = re.search(r"```\s*(SELECT.*?)```", text, re.DOTALL | re.IGNORECASE)
         if match:
             return match.group(1).strip()
         return "CANNOT_ANSWER"

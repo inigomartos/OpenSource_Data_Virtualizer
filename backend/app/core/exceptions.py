@@ -20,9 +20,12 @@ class AuthorizationError(DataMindException):
     pass
 
 
-class ConnectionError(DataMindException):
+class DataMindConnectionError(DataMindException):
     """Database connection failed."""
     pass
+
+
+ConnectionError = DataMindConnectionError  # backward compat alias
 
 
 class SQLValidationError(DataMindException):

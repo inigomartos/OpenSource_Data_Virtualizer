@@ -7,6 +7,7 @@ celery_app = Celery(
     "datamind",
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,
+    include=["app.tasks.alert_checker", "app.tasks.schema_refresh", "app.tasks.report_generator"],
 )
 
 celery_app.conf.update(
