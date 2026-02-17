@@ -1,0 +1,74 @@
+"""Merged insight + chart recommendation — single Claude API call."""
+
+import json
+from typing import Optional
+from anthropic import AsyncAnthropic
+from app.ai.prompts import SYSTEM_PROMPT_ANALYZE_AND_VISUALIZE
+from loguru import logger
+
+
+class AnalyzeAndVisualize:
+    def __init__(self, client: AsyncAnthropic, model: str = "claude-sonnet-4-20250514"):
+        self.client = client
+        self.model = model
+
+    async def analyze(
+        self,
+        user_message: str,
+        sql: str,
+        result_data: dict,
+        on_stream: Optional[callable] = None,
+    ) -> dict:
+        """Analyze query results and recommend visualization."""
+        # Prepare result preview (limit to 50 rows for prompt)
+        columns = result_data.get("columns", [])
+        rows = result_data.get("rows", [])[:50]
+        row_count = result_data.get("row_count", len(rows))
+
+        # Format result preview as table
+        result_preview = self._format_result_preview(columns, rows)
+
+        system_prompt = SYSTEM_PROMPT_ANALYZE_AND_VISUALIZE.format(
+            user_message=user_message,
+            sql=sql,
+            row_count=row_count,
+            columns=", ".join(columns),
+            result_preview=result_preview,
+        )
+
+        response = await self.client.messages.create(
+            model=self.model,
+            max_tokens=1500,
+            system="You are DataMind, an AI business analyst.",
+            messages=[{"role": "user", "content": system_prompt}],
+        )
+
+        response_text = response.content[0].text
+
+        try:
+            parsed = json.loads(response_text)
+            return {
+                "insight": parsed.get("content", "Analysis complete."),
+                "context_summary": parsed.get("context_summary", ""),
+                "chart_config": parsed.get("chart_config", {"chart_type": "table", "title": "Results"}),
+            }
+        except json.JSONDecodeError:
+            logger.warning(f"Failed to parse analysis response as JSON: {response_text[:200]}")
+            return {
+                "insight": response_text,
+                "context_summary": "Analysis provided as text.",
+                "chart_config": {"chart_type": "table", "title": "Results"},
+            }
+
+    def _format_result_preview(self, columns: list[str], rows: list[list]) -> str:
+        """Format results as a readable table for the prompt."""
+        if not rows:
+            return "(empty result set)"
+
+        lines = [" | ".join(columns)]
+        lines.append("-" * len(lines[0]))
+        for row in rows[:20]:
+            lines.append(" | ".join(str(v) for v in row))
+        if len(rows) > 20:
+            lines.append(f"... ({len(rows) - 20} more rows)")
+        return "\n".join(lines)

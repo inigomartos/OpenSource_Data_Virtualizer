@@ -1,0 +1,29 @@
+import { create } from 'zustand';
+import type { ChatMessage, ChatSession } from '@/types/chat';
+
+interface ChatState {
+  sessions: ChatSession[];
+  activeSessionId: string | null;
+  messages: ChatMessage[];
+  isLoading: boolean;
+
+  setSessions: (sessions: ChatSession[]) => void;
+  setActiveSession: (id: string | null) => void;
+  setMessages: (messages: ChatMessage[]) => void;
+  addMessage: (message: ChatMessage) => void;
+  setLoading: (loading: boolean) => void;
+}
+
+export const useChatStore = create<ChatState>((set) => ({
+  sessions: [],
+  activeSessionId: null,
+  messages: [],
+  isLoading: false,
+
+  setSessions: (sessions) => set({ sessions }),
+  setActiveSession: (id) => set({ activeSessionId: id }),
+  setMessages: (messages) => set({ messages }),
+  addMessage: (message) =>
+    set((state) => ({ messages: [...state.messages, message] })),
+  setLoading: (loading) => set({ isLoading: loading }),
+}));
