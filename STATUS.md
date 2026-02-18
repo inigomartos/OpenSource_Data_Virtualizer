@@ -1,7 +1,7 @@
 # DataMind — Project Status
 
 > **Last updated:** 2026-02-18
-> **Last commit:** (pending) Batch B security hardening [Fix #4, #5, #6]
+> **Last commit:** d41cbb1 fix(backend): DB indexes, pagination, health check [Fix #7, #8, #9]
 
 ## Completed Work
 
@@ -15,7 +15,8 @@
 | Documentation | product-documentation.txt, improvement-analysis.txt, audiobook script | 2026-02-18 | — |
 | Strategy | prompting-strategy.txt, CLAUDE.md, STATUS.md | 2026-02-18 | — |
 | **Batch A** | **Fix #1** (JWT refresh), **Fix #2** (alert checker + connections.py), **Fix #3** (wire AIEngine to REST chat) | 2026-02-18 | f163ad9 |
-| **Batch B** | **Fix #4** (SSL/TLS nginx), **Fix #5** (Redis rate limiting), **Fix #6** (security headers) | 2026-02-18 | pending |
+| **Batch B** | **Fix #4** (SSL/TLS nginx), **Fix #5** (Redis rate limiting), **Fix #6** (security headers) | 2026-02-18 | 5f59892, e020457 |
+| **Batch C** | **Fix #7** (DB indexes), **Fix #8** (pagination), **Fix #9** (health check) | 2026-02-18 | d41cbb1 |
 
 ## In Progress
 
@@ -34,10 +35,10 @@ Nothing currently in progress.
 - [x] **Fix #5**: Rate limiting — replaced in-memory dict with Redis INCR+EXPIRE. Per-endpoint limits (login: 5/min, chat: 20/min, default: 100/min). Fail-open on Redis outage. Added `RATE_LIMIT_ENABLED` config toggle.
 - [x] **Fix #6**: Security headers — CSP, X-Frame-Options DENY, X-Content-Type-Options nosniff, Referrer-Policy, Permissions-Policy added to nginx HTTPS block.
 
-### Batch C — Data Layer (Est: 1 session, 30 min)
-- [ ] **Fix #7**: Add database indexes for hot query paths
-- [ ] **Fix #8**: Add pagination to all list endpoints
-- [ ] **Fix #9**: Proper health check (verify DB + Redis connectivity)
+### ~~Batch C — Data Layer~~ COMPLETED
+- [x] **Fix #7**: DB indexes — composite indexes on chat_messages (session_id, created_at), alerts (org_id, is_active), audit_log (org_id, created_at), saved_queries (org_id index=True)
+- [x] **Fix #8**: Pagination — added skip/limit (default 50, max 200) with `func.count()` total to list_connections, list_sessions, get_history, list_alerts
+- [x] **Fix #9**: Health check — rewrote to verify DB (SELECT 1) + Redis (PING). Returns healthy/degraded/unhealthy. Optional `?detail=true` for per-check breakdown.
 
 ### Batch D — Auth Hardening (Est: 1-2 sessions, 1 hr)
 - [ ] **Fix #10**: Token revocation via Redis blacklist
@@ -75,3 +76,4 @@ Nothing currently in progress.
 | 2026-02-18 | 2 | QA (98 findings), debated fix plan, executed 45 fixes (5 agents), docs, audiobook, strategy | Batch A: critical bug fixes |
 | 2026-02-18 | 3 | Batch A: Fixed JWT refresh (Fix #1), alert checker args (Fix #2), connections.py test_connection (Fix #2b), wired AIEngine to REST chat (Fix #3) | Batch B: security hardening |
 | 2026-02-18 | 4 | Batch B: SSL/TLS nginx (Fix #4), Redis rate limiting (Fix #5), security headers (Fix #6) | Batch C: data layer |
+| 2026-02-18 | 5 | Batch C: DB indexes (Fix #7), pagination (Fix #8), health check (Fix #9) | Batch D: auth hardening |
