@@ -1,7 +1,7 @@
 # DataMind — Project Status
 
 > **Last updated:** 2026-02-18
-> **Last commit:** 272f448 feat(backend): Redis PubSub for WS cross-replica [Fix #15]
+> **Last commit:** 5b0191a feat(frontend): automatic token refresh on 401 [Fix #23]
 
 ## Completed Work
 
@@ -21,6 +21,7 @@
 | **Batch E** | **Fix #12** (N+1 query), **Fix #13** (structured logging), **Fix #14** (integration tests) | 2026-02-18 | be92adb, 0c17880, df983b7 |
 | **Batch F** | **Fix #16** (AI streaming via WebSocket), **Fix #17** (per-org token budgeting) | 2026-02-18 | a75ecd8, 3582448 |
 | **Batch G** | **Fix #18** (SAST + dep scanning CI), **Fix #19** (Sentry), **Fix #15** (Redis PubSub WS) | 2026-02-18 | 5e95207, 1a12fcb, 272f448 |
+| **Batch H** | **Fix #21** (ErrorBoundary wrappers), **Fix #22** (loading skeletons), **Fix #23** (auto token refresh) | 2026-02-18 | 4389361, 85755d1, 5b0191a |
 
 ## In Progress
 
@@ -63,8 +64,13 @@ Nothing currently in progress.
 - [x] **Fix #19**: Sentry error tracking — `sentry-sdk[fastapi]` backend (conditional init, no-op without DSN). `@sentry/nextjs` frontend with client+server configs, `withSentryConfig` in next.config.js. SENTRY_DSN in docker-compose for both services.
 - [x] **Fix #15**: Redis PubSub for WebSocket — `ConnectionManagerWS.initialize()` subscribes to `datamind:ws:broadcast` channel. Local delivery first, Redis publish fallback for cross-replica. Background `_listen()` task forwards PubSub messages to local connections. Graceful degradation: local-only if Redis unavailable.
 
-### Batch H-L — Enterprise (Est: 4-6 sessions)
-- [ ] Fixes #21-30: Prometheus, circuit breakers, OpenTelemetry, K8s, RBAC, SSO/SAML, Alembic migrations, etc.
+### ~~Batch H — Frontend Polish~~ COMPLETED
+- [x] **Fix #21**: ErrorBoundary wrappers — wrapped ChatContainer (page-level), chat message area, dashboard KPI row, dashboard grid layout, and ChartRenderer inside WidgetCard with `ErrorBoundary` component. Graceful fallback UI with retry buttons.
+- [x] **Fix #22**: Loading skeletons — replaced raw `animate-pulse` divs with `SkeletonCard` on connections and dashboards list pages. Dashboard detail gets skeleton header + KPI + grid layout. Session sidebar gains `sessionsLoading` state with skeleton lines. Added `sessionsLoading`/`setSessionsLoading` to chat Zustand store.
+- [x] **Fix #23**: Auto token refresh — api-client intercepts 401, calls `POST /auth/refresh` with `credentials:'include'` (HttpOnly cookies), retries original request on success. Promise-based mutex prevents concurrent refresh attempts. Falls back to `/login` redirect on refresh failure.
+
+### Batch I-L — Enterprise (Est: 3-5 sessions)
+- [ ] Fixes #24-30: Prometheus, circuit breakers, OpenTelemetry, K8s, RBAC, SSO/SAML, Alembic migrations, etc.
 
 ## Known Blockers
 
@@ -84,4 +90,5 @@ Nothing currently in progress.
 | 2026-02-18 | 6 | Batch D: Token revocation (Fix #10), HttpOnly cookies (Fix #11), user context sidebar (Fix #20) | Batch E: backend quality |
 | 2026-02-18 | 7 | Batch E: N+1 fix (Fix #12), structured JSON logging (Fix #13), integration tests (Fix #14) | Batch F: AI features |
 | 2026-02-18 | 8 | Batch F: AI streaming via WebSocket (Fix #16), per-org token budgeting (Fix #17) | Batch G: DevOps |
-| 2026-02-18 | 9 | Batch G: SAST + dep scanning CI (Fix #18), Sentry (Fix #19), Redis PubSub WS (Fix #15) | Batch H-L: Enterprise |
+| 2026-02-18 | 9 | Batch G: SAST + dep scanning CI (Fix #18), Sentry (Fix #19), Redis PubSub WS (Fix #15) | Batch H: Frontend polish |
+| 2026-02-18 | 10 | Batch H: ErrorBoundary wrappers (Fix #21), loading skeletons (Fix #22), auto token refresh (Fix #23) | Batch I-L: Enterprise |
