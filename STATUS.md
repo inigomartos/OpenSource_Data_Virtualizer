@@ -1,7 +1,7 @@
 # DataMind — Project Status
 
 > **Last updated:** 2026-02-18
-> **Last commit:** f163ad9 fix(backend): Batch A critical bug fixes [Fix #1, #2, #3]
+> **Last commit:** (pending) Batch B security hardening [Fix #4, #5, #6]
 
 ## Completed Work
 
@@ -15,6 +15,7 @@
 | Documentation | product-documentation.txt, improvement-analysis.txt, audiobook script | 2026-02-18 | — |
 | Strategy | prompting-strategy.txt, CLAUDE.md, STATUS.md | 2026-02-18 | — |
 | **Batch A** | **Fix #1** (JWT refresh), **Fix #2** (alert checker + connections.py), **Fix #3** (wire AIEngine to REST chat) | 2026-02-18 | f163ad9 |
+| **Batch B** | **Fix #4** (SSL/TLS nginx), **Fix #5** (Redis rate limiting), **Fix #6** (security headers) | 2026-02-18 | pending |
 
 ## In Progress
 
@@ -28,10 +29,10 @@ Nothing currently in progress.
 - [x] **Fix #2b**: connections.py `test_connection` — added missing `org_id` arg to `get_connector()` call
 - [x] **Fix #3**: Wired AIEngine to REST `/chat/message` — full pipeline: schema→SQL→execute→analyze→respond
 
-### Batch B — Security Hardening (Est: 1-2 sessions, 1 hr)
-- [ ] **Fix #4**: Add SSL/TLS to nginx (Let's Encrypt config, HTTPS redirect, HSTS)
-- [ ] **Fix #5**: Move rate limiting from in-memory to Redis
-- [ ] **Fix #6**: Add security headers (CSP, X-Frame-Options, X-Content-Type-Options)
+### ~~Batch B — Security Hardening~~ COMPLETED
+- [x] **Fix #4**: SSL/TLS — nginx.conf rewritten with HTTPS (443), HTTP→HTTPS redirect, TLS 1.2/1.3, HSTS. docker-compose.yml updated with port 443 + SSL volume mount.
+- [x] **Fix #5**: Rate limiting — replaced in-memory dict with Redis INCR+EXPIRE. Per-endpoint limits (login: 5/min, chat: 20/min, default: 100/min). Fail-open on Redis outage. Added `RATE_LIMIT_ENABLED` config toggle.
+- [x] **Fix #6**: Security headers — CSP, X-Frame-Options DENY, X-Content-Type-Options nosniff, Referrer-Policy, Permissions-Policy added to nginx HTTPS block.
 
 ### Batch C — Data Layer (Est: 1 session, 30 min)
 - [ ] **Fix #7**: Add database indexes for hot query paths
@@ -73,3 +74,4 @@ Nothing currently in progress.
 | 2026-02-17 | 1 | Built entire platform from scratch (20 agents) | QA testing |
 | 2026-02-18 | 2 | QA (98 findings), debated fix plan, executed 45 fixes (5 agents), docs, audiobook, strategy | Batch A: critical bug fixes |
 | 2026-02-18 | 3 | Batch A: Fixed JWT refresh (Fix #1), alert checker args (Fix #2), connections.py test_connection (Fix #2b), wired AIEngine to REST chat (Fix #3) | Batch B: security hardening |
+| 2026-02-18 | 4 | Batch B: SSL/TLS nginx (Fix #4), Redis rate limiting (Fix #5), security headers (Fix #6) | Batch C: data layer |
