@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { MessageSquare, Database, LayoutDashboard, Search, Bell, Settings, type LucideIcon } from 'lucide-react';
+import { useUserStore } from '@/stores/user-store';
 
 const iconMap: Record<string, LucideIcon> = { MessageSquare, Database, LayoutDashboard, Search, Bell, Settings };
 
@@ -17,6 +18,11 @@ const navItems = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const user = useUserStore((s) => s.user);
+
+  const displayName = user?.full_name || 'User';
+  const displayEmail = user?.email || 'user@company.com';
+  const avatarInitial = displayName.charAt(0).toUpperCase();
 
   return (
     <aside className="w-64 bg-bg-surface border-r border-border-default flex flex-col">
@@ -49,11 +55,11 @@ export default function Sidebar() {
       <div className="p-4 border-t border-border-default">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-full bg-brand-primary/20 flex items-center justify-center text-brand-primary text-sm font-bold">
-            U
+            {avatarInitial}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-text-primary truncate">User</p>
-            <p className="text-xs text-text-muted truncate">user@company.com</p>
+            <p className="text-sm font-medium text-text-primary truncate">{displayName}</p>
+            <p className="text-xs text-text-muted truncate">{displayEmail}</p>
           </div>
         </div>
       </div>
