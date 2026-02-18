@@ -1,12 +1,29 @@
-"""Custom middleware: request logging, Redis-backed rate limiting."""
+"""Custom middleware: request ID, request logging, Redis-backed rate limiting."""
 
 import time
+import uuid
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from loguru import logger
 
 import redis.asyncio as aioredis
+
+from app.core.logging_config import request_id_ctx
+
+
+class RequestIDMiddleware(BaseHTTPMiddleware):
+    """Assign a correlation ID to every request for structured logging."""
+
+    async def dispatch(self, request: Request, call_next):
+        rid = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+        token = request_id_ctx.set(rid)
+        try:
+            response: Response = await call_next(request)
+            response.headers["X-Request-ID"] = rid
+            return response
+        finally:
+            request_id_ctx.reset(token)
 
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
@@ -15,7 +32,11 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         response: Response = await call_next(request)
         elapsed = (time.perf_counter() - start) * 1000
         logger.info(
-            f"{request.method} {request.url.path} → {response.status_code} ({elapsed:.1f}ms)"
+            "{method} {path} → {status} ({elapsed:.1f}ms)",
+            method=request.method,
+            path=request.url.path,
+            status=response.status_code,
+            elapsed=elapsed,
         )
         return response
 

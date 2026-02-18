@@ -7,7 +7,8 @@ from starlette.responses import JSONResponse
 from app.api.router import api_router
 from app.api.websocket import websocket_router
 from app.core.database import engine
-from app.core.middleware import RequestLoggingMiddleware, RateLimitMiddleware
+from app.core.middleware import RequestIDMiddleware, RequestLoggingMiddleware, RateLimitMiddleware
+from app.core.logging_config import configure_logging
 from app.core.exceptions import DataMindException, AuthenticationError, AuthorizationError, NotFoundError
 from app.config import settings
 from loguru import logger
@@ -19,6 +20,9 @@ async def lifespan(app: FastAPI):
     yield
     logger.info("Shutting down DataMind API...")
     await engine.dispose()
+
+
+configure_logging(debug=settings.DEBUG)
 
 
 def create_app() -> FastAPI:
@@ -37,6 +41,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.add_middleware(RequestLoggingMiddleware)
+    app.add_middleware(RequestIDMiddleware)
     app.add_middleware(RateLimitMiddleware, redis_url=settings.REDIS_URL)
 
     app.include_router(api_router, prefix="/api/v1")
