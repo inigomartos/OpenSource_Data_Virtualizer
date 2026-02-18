@@ -175,7 +175,7 @@ async def test_connection(
     connector = None
     try:
         connector = await connection_manager.get_connector(
-            str(connection.id), db,
+            str(connection.id), str(user.org_id), db,
         )
         success = await connector.test_connection()
 

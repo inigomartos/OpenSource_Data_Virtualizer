@@ -36,7 +36,7 @@ async def _check_single_alert(alert: Alert, db: AsyncSession) -> None:
             return
 
         # Get connector for the alert's connection
-        connector = await connection_manager.get_connector(str(alert.connection_id), db)
+        connector = await connection_manager.get_connector_internal(str(alert.connection_id), db)
 
         try:
             # Execute the alert's query

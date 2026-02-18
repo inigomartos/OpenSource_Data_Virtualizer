@@ -79,11 +79,11 @@ class AuthService:
 
     async def refresh(self, refresh_token: str) -> TokenResponse:
         """Refresh access token using refresh token."""
-        from app.core.security import decode_jwt
+        from app.core.security import decode_refresh_jwt
         from jose import JWTError
 
         try:
-            payload = decode_jwt(refresh_token)
+            payload = decode_refresh_jwt(refresh_token)
             if payload.get("type") != "refresh":
                 raise AuthenticationError("Invalid refresh token")
 

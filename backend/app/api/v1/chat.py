@@ -1,9 +1,7 @@
 """Chat REST endpoints.
 
-Provides CRUD operations for chat sessions and messages.  The actual AI
-response generation happens via WebSocket; this module exposes a REST
-fallback that persists the user message and returns a placeholder AI
-response.
+Provides CRUD operations for chat sessions and messages, including
+AI-powered responses via the AIEngine pipeline.
 
 All queries are scoped to the current user (``user.id``) for security.
 """
@@ -18,6 +16,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.core.exceptions import raise_not_found, raise_forbidden
+from app.core.sql_validator import SQLSafetyValidator
 from app.dependencies import get_current_user
 from app.models.chat_session import ChatSession
 from app.models.chat_message import ChatMessage
@@ -30,6 +29,13 @@ from app.schemas.chat import (
     ChatSessionUpdate,
 )
 from app.schemas.common import ListResponse
+from app.services.ai_engine import AIEngine
+from app.services.cache_service import CacheService
+from app.services.connection_manager import ConnectionManager
+from app.services.query_executor import QueryExecutor
+from app.services.schema_discoverer import SchemaDiscoverer
+from app.ai.conversation import ConversationManager
+from loguru import logger
 
 router = APIRouter()
 
@@ -62,10 +68,10 @@ async def send_message(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Accept a user message, persist it, and return a placeholder AI response.
+    """Accept a user message, persist it, and return an AI-generated response.
 
     If ``session_id`` is omitted a new session is created automatically.
-    The real AI integration happens via WebSocket; this is the REST fallback.
+    The AIEngine pipeline: schema context -> NL-to-SQL -> execute -> analyze.
     """
     # Resolve or create chat session
     if payload.session_id:
@@ -93,18 +99,65 @@ async def send_message(
     await db.flush()
     await db.refresh(user_message)
 
-    # Create a placeholder assistant response
+    # Run the AI pipeline
+    connection_manager = ConnectionManager()
+    schema_discoverer = SchemaDiscoverer()
+    query_executor = QueryExecutor(connection_manager)
+    cache_service = CacheService()
+    conversation_manager = ConversationManager()
+    sql_validator = SQLSafetyValidator()
+
+    ai_engine = AIEngine(
+        schema_provider=schema_discoverer,
+        query_runner=query_executor,
+        sql_validator=sql_validator,
+        cache_provider=cache_service,
+        conversation_provider=conversation_manager,
+    )
+
+    try:
+        ai_response = await ai_engine.process_message(
+            user_message=payload.message,
+            connection_id=str(payload.connection_id),
+            session_id=str(session.id),
+            db=db,
+        )
+    except Exception as e:
+        logger.error(f"AIEngine error for session {session.id}: {e}")
+        ai_response = ChatResponse(
+            content=f"I encountered an error processing your request: {str(e)}",
+            error_message=str(e),
+        )
+
+    # Persist the assistant response with all AI metadata
     assistant_message = ChatMessage(
         session_id=session.id,
         role="assistant",
-        content="Your message has been received. Processing will continue via the real-time channel.",
+        content=ai_response.content,
+        generated_sql=ai_response.generated_sql,
+        sql_was_executed=ai_response.generated_sql is not None and ai_response.error_message is None,
+        query_result_preview=ai_response.query_result_preview,
+        full_result_row_count=ai_response.full_result_row_count,
+        chart_config=ai_response.chart_config,
+        execution_time_ms=ai_response.execution_time_ms,
+        error_message=ai_response.error_message,
+        token_usage=ai_response.token_usage,
+        context_summary=ai_response.context_summary,
     )
     db.add(assistant_message)
     await db.flush()
     await db.refresh(assistant_message)
 
     return ChatResponse(
-        content=assistant_message.content,
+        content=ai_response.content,
+        context_summary=ai_response.context_summary,
+        generated_sql=ai_response.generated_sql,
+        query_result_preview=ai_response.query_result_preview,
+        full_result_row_count=ai_response.full_result_row_count,
+        chart_config=ai_response.chart_config,
+        execution_time_ms=ai_response.execution_time_ms,
+        token_usage=ai_response.token_usage,
+        error_message=ai_response.error_message,
         session_id=session.id,
         message_id=assistant_message.id,
     )
