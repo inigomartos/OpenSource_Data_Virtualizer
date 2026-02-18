@@ -2,6 +2,7 @@
 
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from app.models.schema_table import SchemaTable
 from app.models.schema_column import SchemaColumn
 from app.models.connection import Connection
@@ -14,21 +15,18 @@ class SchemaDiscoverer:
     async def get_schema_context(self, connection_id: str, db: AsyncSession) -> str:
         """Build a text representation of the schema for AI prompts."""
         result = await db.execute(
-            select(SchemaTable).where(SchemaTable.connection_id == connection_id)
+            select(SchemaTable)
+            .where(SchemaTable.connection_id == connection_id)
+            .options(selectinload(SchemaTable.columns))
         )
-        tables = result.scalars().all()
+        tables = result.scalars().unique().all()
 
         if not tables:
             return "No schema metadata available. Please refresh the schema."
 
         context_parts = []
         for table in tables:
-            col_result = await db.execute(
-                select(SchemaColumn)
-                .where(SchemaColumn.schema_table_id == table.id)
-                .order_by(SchemaColumn.ordinal_position)
-            )
-            columns = col_result.scalars().all()
+            columns = table.columns
 
             table_desc = f"### Table: {table.table_name}"
             if table.ai_description:

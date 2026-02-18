@@ -24,4 +24,7 @@ class SchemaTable(BaseModel):
 
     # Relationships
     connection = relationship("Connection", back_populates="schema_tables")
-    columns = relationship("SchemaColumn", back_populates="schema_table", cascade="all, delete-orphan")
+    columns = relationship(
+        "SchemaColumn", back_populates="schema_table",
+        cascade="all, delete-orphan", order_by="SchemaColumn.ordinal_position",
+    )
