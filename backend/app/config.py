@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     # CORS
     CORS_ORIGINS: List[str] = ["http://localhost:3000"]
 
+    # Rate Limiting
+    RATE_LIMIT_ENABLED: bool = True
+
     # App
     DEBUG: bool = False
 

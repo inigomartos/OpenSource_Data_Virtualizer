@@ -37,7 +37,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.add_middleware(RequestLoggingMiddleware)
-    app.add_middleware(RateLimitMiddleware, requests_per_minute=100)
+    app.add_middleware(RateLimitMiddleware, redis_url=settings.REDIS_URL)
 
     app.include_router(api_router, prefix="/api/v1")
     app.include_router(websocket_router)
