@@ -1,7 +1,7 @@
 # DataMind — Project Status
 
 > **Last updated:** 2026-02-18
-> **Last commit:** df983b7 test(backend): integration tests [Fix #14]
+> **Last commit:** 3582448 feat(backend): per-org token budgeting [Fix #17]
 
 ## Completed Work
 
@@ -19,6 +19,7 @@
 | **Batch C** | **Fix #7** (DB indexes), **Fix #8** (pagination), **Fix #9** (health check) | 2026-02-18 | d41cbb1 |
 | **Batch D** | **Fix #10** (token revocation), **Fix #11** (HttpOnly cookies), **Fix #20** (user context) | 2026-02-18 | 2b74c04, 855fc31, c8854ac |
 | **Batch E** | **Fix #12** (N+1 query), **Fix #13** (structured logging), **Fix #14** (integration tests) | 2026-02-18 | be92adb, 0c17880, df983b7 |
+| **Batch F** | **Fix #16** (AI streaming via WebSocket), **Fix #17** (per-org token budgeting) | 2026-02-18 | a75ecd8, 3582448 |
 
 ## In Progress
 
@@ -52,16 +53,16 @@ Nothing currently in progress.
 - [x] **Fix #13**: Structured logging — new `logging_config.py` with JSON format (prod) / pretty text (dev). `RequestIDMiddleware` generates UUID correlation ID per request via `contextvars`. `RequestLoggingMiddleware` updated.
 - [x] **Fix #14**: Integration tests — 18 new tests across `test_connections.py` (6), `test_chat.py` (6), `test_dashboards.py` (6). Enhanced `conftest.py` with `test_org`, `test_user`, `user_auth_headers`, `test_connection` fixtures.
 
-### Batch F — AI Features (Est: 2 sessions, 1.5 hrs)
-- [ ] **Fix #16**: Implement AI streaming responses via WebSocket
-- [ ] **Fix #17**: Add per-org token budgeting
-- [ ] **Fix #15**: WebSocket support across replicas (Redis PubSub)
+### ~~Batch F — AI Features~~ COMPLETED (Fix #15 deferred to Batch H-L)
+- [x] **Fix #16**: AI streaming — Anthropic `messages.stream()` in SQLGenerator + AnalyzeAndVisualize. WebSocket `chat_message` handler with full AI pipeline, `stream`/`chat_response` events, cookie auth fallback. Frontend: streaming state in Zustand, WS-first with REST fallback, live `StreamingText` component with phase labels.
+- [x] **Fix #17**: Token budgeting — Organization model gains `token_budget_monthly`, `token_usage_current`, `budget_reset_at` (BigInteger). `TokenBudgetService` with budget check, usage recording, automatic monthly reset. AIEngine enforces budget pre-call and records usage post-call. `GET/PUT /api/v1/org/budget` endpoints (admin-only for PUT). Plan-based defaults (free: 500K, starter: 2M, pro: 10M, enterprise: 50M).
 
 ### Batch G — DevOps (Est: 1 session, 30 min)
 - [ ] **Fix #18**: SAST + dependency scanning in CI pipeline
 - [ ] **Fix #19**: Add Sentry error tracking
 
 ### Batch H-L — Enterprise (Est: 4-6 sessions)
+- [ ] **Fix #15**: WebSocket support across replicas (Redis PubSub) — deferred from Batch F
 - [ ] Fixes #21-30: Prometheus, circuit breakers, OpenTelemetry, K8s, RBAC, SSO/SAML, Alembic migrations, etc.
 
 ## Known Blockers
@@ -81,3 +82,4 @@ Nothing currently in progress.
 | 2026-02-18 | 5 | Batch C: DB indexes (Fix #7), pagination (Fix #8), health check (Fix #9) | Batch D: auth hardening |
 | 2026-02-18 | 6 | Batch D: Token revocation (Fix #10), HttpOnly cookies (Fix #11), user context sidebar (Fix #20) | Batch E: backend quality |
 | 2026-02-18 | 7 | Batch E: N+1 fix (Fix #12), structured JSON logging (Fix #13), integration tests (Fix #14) | Batch F: AI features |
+| 2026-02-18 | 8 | Batch F: AI streaming via WebSocket (Fix #16), per-org token budgeting (Fix #17) | Batch G: DevOps |
