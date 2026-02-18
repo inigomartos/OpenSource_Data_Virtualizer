@@ -22,6 +22,7 @@ from app.ai.analyze_and_visualize import AnalyzeAndVisualize
 from app.ai.conversation import ConversationManager
 from app.core.sql_validator import SQLSafetyValidator
 from app.schemas.chat import ChatResponse
+from app.services.token_budget_service import TokenBudgetService, TokenBudgetExceeded
 from loguru import logger
 
 
@@ -69,17 +70,34 @@ class AIEngine:
         session_id: str,
         db: AsyncSession,
         on_stream: Optional[callable] = None,
+        org_id: Optional[str] = None,
     ) -> ChatResponse:
         """
         Full pipeline:
+            0. Check token budget (if org_id provided)
             1. Load schema context
             2. Load condensed conversation history
             3. Generate SQL via Claude
             4. Validate SQL via sqlglot parser
             5. Check cache -> execute if miss
             6. Analyze results + recommend chart (single Claude call)
-            7. Return response
+            7. Record token usage & return response
         """
+
+        # Step 0: Token Budget Check
+        budget_service = TokenBudgetService()
+        if org_id:
+            try:
+                await budget_service.check_budget(org_id, db)
+            except TokenBudgetExceeded as exc:
+                return ChatResponse(
+                    content=(
+                        "Your organization has reached its monthly AI token budget. "
+                        "Please contact your administrator to upgrade the plan or "
+                        "wait for the budget to reset."
+                    ),
+                    error_message=str(exc),
+                )
 
         # Step 1: Schema Context
         schema_context = await self.schema_provider.get_schema_context(
@@ -196,6 +214,15 @@ class AIEngine:
             "input_tokens": sql_tokens.get("input_tokens", 0) + analysis_tokens.get("input_tokens", 0),
             "output_tokens": sql_tokens.get("output_tokens", 0) + analysis_tokens.get("output_tokens", 0),
         }
+
+        # Step 7: Record token usage against org budget
+        if org_id:
+            await budget_service.record_usage(
+                org_id=org_id,
+                input_tokens=total_tokens.get("input_tokens", 0),
+                output_tokens=total_tokens.get("output_tokens", 0),
+                db=db,
+            )
 
         return ChatResponse(
             content=analysis["insight"],

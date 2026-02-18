@@ -121,6 +121,7 @@ async def send_message(
             connection_id=str(payload.connection_id),
             session_id=str(session.id),
             db=db,
+            org_id=str(user.org_id),
         )
     except Exception as e:
         logger.error(f"AIEngine error for session {session.id}: {e}")
