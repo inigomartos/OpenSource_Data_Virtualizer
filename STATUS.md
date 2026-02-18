@@ -1,7 +1,7 @@
 # DataMind — Project Status
 
 > **Last updated:** 2026-02-18
-> **Last commit:** 3582448 feat(backend): per-org token budgeting [Fix #17]
+> **Last commit:** 272f448 feat(backend): Redis PubSub for WS cross-replica [Fix #15]
 
 ## Completed Work
 
@@ -20,6 +20,7 @@
 | **Batch D** | **Fix #10** (token revocation), **Fix #11** (HttpOnly cookies), **Fix #20** (user context) | 2026-02-18 | 2b74c04, 855fc31, c8854ac |
 | **Batch E** | **Fix #12** (N+1 query), **Fix #13** (structured logging), **Fix #14** (integration tests) | 2026-02-18 | be92adb, 0c17880, df983b7 |
 | **Batch F** | **Fix #16** (AI streaming via WebSocket), **Fix #17** (per-org token budgeting) | 2026-02-18 | a75ecd8, 3582448 |
+| **Batch G** | **Fix #18** (SAST + dep scanning CI), **Fix #19** (Sentry), **Fix #15** (Redis PubSub WS) | 2026-02-18 | 5e95207, 1a12fcb, 272f448 |
 
 ## In Progress
 
@@ -57,12 +58,12 @@ Nothing currently in progress.
 - [x] **Fix #16**: AI streaming — Anthropic `messages.stream()` in SQLGenerator + AnalyzeAndVisualize. WebSocket `chat_message` handler with full AI pipeline, `stream`/`chat_response` events, cookie auth fallback. Frontend: streaming state in Zustand, WS-first with REST fallback, live `StreamingText` component with phase labels.
 - [x] **Fix #17**: Token budgeting — Organization model gains `token_budget_monthly`, `token_usage_current`, `budget_reset_at` (BigInteger). `TokenBudgetService` with budget check, usage recording, automatic monthly reset. AIEngine enforces budget pre-call and records usage post-call. `GET/PUT /api/v1/org/budget` endpoints (admin-only for PUT). Plan-based defaults (free: 500K, starter: 2M, pro: 10M, enterprise: 50M).
 
-### Batch G — DevOps (Est: 1 session, 30 min)
-- [ ] **Fix #18**: SAST + dependency scanning in CI pipeline
-- [ ] **Fix #19**: Add Sentry error tracking
+### ~~Batch G — DevOps & Observability~~ COMPLETED
+- [x] **Fix #18**: SAST + dependency scanning — new CI "security" job with pip-audit (Python CVEs), bandit (Python SAST, high severity, JSON artifact), npm audit (Node.js). Build gates on security passing.
+- [x] **Fix #19**: Sentry error tracking — `sentry-sdk[fastapi]` backend (conditional init, no-op without DSN). `@sentry/nextjs` frontend with client+server configs, `withSentryConfig` in next.config.js. SENTRY_DSN in docker-compose for both services.
+- [x] **Fix #15**: Redis PubSub for WebSocket — `ConnectionManagerWS.initialize()` subscribes to `datamind:ws:broadcast` channel. Local delivery first, Redis publish fallback for cross-replica. Background `_listen()` task forwards PubSub messages to local connections. Graceful degradation: local-only if Redis unavailable.
 
 ### Batch H-L — Enterprise (Est: 4-6 sessions)
-- [ ] **Fix #15**: WebSocket support across replicas (Redis PubSub) — deferred from Batch F
 - [ ] Fixes #21-30: Prometheus, circuit breakers, OpenTelemetry, K8s, RBAC, SSO/SAML, Alembic migrations, etc.
 
 ## Known Blockers
@@ -83,3 +84,4 @@ Nothing currently in progress.
 | 2026-02-18 | 6 | Batch D: Token revocation (Fix #10), HttpOnly cookies (Fix #11), user context sidebar (Fix #20) | Batch E: backend quality |
 | 2026-02-18 | 7 | Batch E: N+1 fix (Fix #12), structured JSON logging (Fix #13), integration tests (Fix #14) | Batch F: AI features |
 | 2026-02-18 | 8 | Batch F: AI streaming via WebSocket (Fix #16), per-org token budgeting (Fix #17) | Batch G: DevOps |
+| 2026-02-18 | 9 | Batch G: SAST + dep scanning CI (Fix #18), Sentry (Fix #19), Redis PubSub WS (Fix #15) | Batch H-L: Enterprise |
