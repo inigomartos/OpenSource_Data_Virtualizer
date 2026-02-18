@@ -10,6 +10,7 @@ import {
   Clock,
 } from 'lucide-react';
 import { useDashboards } from '@/hooks/use-dashboards';
+import { SkeletonCard } from '@/components/ui/loading-skeleton';
 import { formatDistanceToNow } from 'date-fns';
 
 export default function DashboardsPage() {
@@ -40,10 +41,7 @@ export default function DashboardsPage() {
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="h-48 bg-bg-elevated animate-pulse rounded-xl border border-border-default"
-            />
+            <SkeletonCard key={i} className="h-48" />
           ))}
         </div>
       ) : dashboards.length === 0 ? (

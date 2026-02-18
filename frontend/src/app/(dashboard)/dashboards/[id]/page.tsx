@@ -28,6 +28,7 @@ import WidgetCard from '@/components/dashboard/widget-card';
 import WidgetEditorDialog from '@/components/dashboard/widget-editor-dialog';
 import AddWidgetDialog from '@/components/dashboard/add-widget-dialog';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
+import { LoadingSkeleton, SkeletonCard } from '@/components/ui/loading-skeleton';
 import type {
   WidgetWithData,
   CreateWidgetPayload,
@@ -230,10 +231,23 @@ export default function DashboardDetailPage() {
   // Loading state
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-[60vh]">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-8 h-8 text-brand-primary animate-spin" />
-          <p className="text-sm text-text-muted">Loading dashboard...</p>
+      <div>
+        <div className="flex items-center gap-3 mb-6">
+          <LoadingSkeleton width="32px" height="32px" rounded="lg" />
+          <div className="space-y-2">
+            <LoadingSkeleton width="200px" height="24px" />
+            <LoadingSkeleton width="300px" height="14px" />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-6">
+          {[1, 2, 3, 4].map((i) => (
+            <LoadingSkeleton key={i} height="120px" className="w-full" rounded="xl" />
+          ))}
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <SkeletonCard key={i} className="h-64" />
+          ))}
         </div>
       </div>
     );

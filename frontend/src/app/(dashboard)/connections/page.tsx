@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { apiClient } from '@/lib/api-client';
+import { SkeletonCard } from '@/components/ui/loading-skeleton';
 import type { Connection } from '@/types/connection';
 
 export default function ConnectionsPage() {
@@ -42,7 +43,7 @@ export default function ConnectionsPage() {
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-40 bg-bg-elevated animate-pulse rounded-xl border border-border-default" />
+            <SkeletonCard key={i} className="h-40" />
           ))}
         </div>
       ) : connections.length === 0 ? (
