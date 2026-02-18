@@ -1,7 +1,7 @@
 # DataMind — Project Status
 
 > **Last updated:** 2026-02-18
-> **Last commit:** d41cbb1 fix(backend): DB indexes, pagination, health check [Fix #7, #8, #9]
+> **Last commit:** c8854ac feat(frontend): user context sidebar [Fix #20]
 
 ## Completed Work
 
@@ -17,6 +17,7 @@
 | **Batch A** | **Fix #1** (JWT refresh), **Fix #2** (alert checker + connections.py), **Fix #3** (wire AIEngine to REST chat) | 2026-02-18 | f163ad9 |
 | **Batch B** | **Fix #4** (SSL/TLS nginx), **Fix #5** (Redis rate limiting), **Fix #6** (security headers) | 2026-02-18 | 5f59892, e020457 |
 | **Batch C** | **Fix #7** (DB indexes), **Fix #8** (pagination), **Fix #9** (health check) | 2026-02-18 | d41cbb1 |
+| **Batch D** | **Fix #10** (token revocation), **Fix #11** (HttpOnly cookies), **Fix #20** (user context) | 2026-02-18 | 2b74c04, 855fc31, c8854ac |
 
 ## In Progress
 
@@ -40,10 +41,10 @@ Nothing currently in progress.
 - [x] **Fix #8**: Pagination — added skip/limit (default 50, max 200) with `func.count()` total to list_connections, list_sessions, get_history, list_alerts
 - [x] **Fix #9**: Health check — rewrote to verify DB (SELECT 1) + Redis (PING). Returns healthy/degraded/unhealthy. Optional `?detail=true` for per-check breakdown.
 
-### Batch D — Auth Hardening (Est: 1-2 sessions, 1 hr)
-- [ ] **Fix #10**: Token revocation via Redis blacklist
-- [ ] **Fix #11**: Move JWT storage from localStorage to HttpOnly cookies
-- [ ] **Fix #20**: Add user context to frontend (show real name/email in sidebar)
+### ~~Batch D — Auth Hardening~~ COMPLETED
+- [x] **Fix #10**: Token revocation — JTI claim in all tokens, Redis SETEX blacklist with TTL, POST /logout blacklists access + refresh tokens, get_current_user checks blacklist. Fail-open on Redis outage.
+- [x] **Fix #11**: HttpOnly cookies — login sets Secure/HttpOnly/SameSite=Lax cookies, refresh reads from cookie or body, logout clears cookies. dependencies.py checks header then cookie (backward compatible). Frontend uses `credentials:'include'`, removed localStorage token logic. Added COOKIE_DOMAIN/COOKIE_SECURE to config.
+- [x] **Fix #20**: User context — new Zustand user-store.ts (persisted), sidebar reads real name/email/avatar from store. Login page populates store from response.
 
 ### Batch E — Backend Quality (Est: 1 session, 45 min)
 - [ ] **Fix #12**: Fix N+1 query in SchemaDiscoverer
@@ -77,3 +78,4 @@ Nothing currently in progress.
 | 2026-02-18 | 3 | Batch A: Fixed JWT refresh (Fix #1), alert checker args (Fix #2), connections.py test_connection (Fix #2b), wired AIEngine to REST chat (Fix #3) | Batch B: security hardening |
 | 2026-02-18 | 4 | Batch B: SSL/TLS nginx (Fix #4), Redis rate limiting (Fix #5), security headers (Fix #6) | Batch C: data layer |
 | 2026-02-18 | 5 | Batch C: DB indexes (Fix #7), pagination (Fix #8), health check (Fix #9) | Batch D: auth hardening |
+| 2026-02-18 | 6 | Batch D: Token revocation (Fix #10), HttpOnly cookies (Fix #11), user context sidebar (Fix #20) | Batch E: backend quality |
