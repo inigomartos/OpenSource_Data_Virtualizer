@@ -1,5 +1,6 @@
-"""WebSocket endpoint with JWT-authenticated handshake and AI streaming."""
+"""WebSocket endpoint with JWT auth, AI streaming, and Redis PubSub for multi-replica support."""
 
+import asyncio
 from typing import Optional
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
@@ -23,12 +24,44 @@ import json
 
 websocket_router = APIRouter()
 
+WS_PUBSUB_CHANNEL = "datamind:ws:broadcast"
+
 
 class ConnectionManagerWS:
-    """Manages active WebSocket connections."""
+    """Manages active WebSocket connections with Redis PubSub for cross-replica delivery."""
 
     def __init__(self):
         self.active_connections: dict[str, WebSocket] = {}
+        self._redis = None
+        self._pubsub = None
+        self._listener_task: Optional[asyncio.Task] = None
+
+    async def initialize(self):
+        """Connect to Redis PubSub. Call once at app startup."""
+        try:
+            import redis.asyncio as aioredis
+            from app.config import settings
+            self._redis = aioredis.from_url(
+                settings.REDIS_URL, socket_connect_timeout=2,
+            )
+            self._pubsub = self._redis.pubsub()
+            await self._pubsub.subscribe(WS_PUBSUB_CHANNEL)
+            self._listener_task = asyncio.create_task(self._listen())
+            logger.info("WebSocket Redis PubSub initialized")
+        except Exception as e:
+            logger.warning(f"Redis PubSub init failed (local-only mode): {e}")
+            self._redis = None
+            self._pubsub = None
+
+    async def shutdown(self):
+        """Cleanup on app shutdown."""
+        if self._listener_task:
+            self._listener_task.cancel()
+        if self._pubsub:
+            await self._pubsub.unsubscribe(WS_PUBSUB_CHANNEL)
+            await self._pubsub.aclose()
+        if self._redis:
+            await self._redis.aclose()
 
     async def connect(self, user_id: str, websocket: WebSocket):
         await websocket.accept()
@@ -40,9 +73,36 @@ class ConnectionManagerWS:
         logger.info(f"WebSocket disconnected: user {user_id}")
 
     async def send_to_user(self, user_id: str, data: dict):
+        """Send to local connection first; if not found, publish to Redis for other replicas."""
         ws = self.active_connections.get(user_id)
         if ws:
             await ws.send_json(data)
+        elif self._redis:
+            try:
+                payload = json.dumps({"user_id": user_id, "data": data})
+                await self._redis.publish(WS_PUBSUB_CHANNEL, payload)
+            except Exception as e:
+                logger.warning(f"Failed to publish WS message via Redis: {e}")
+
+    async def _listen(self):
+        """Background task: listen for messages from other replicas."""
+        try:
+            async for message in self._pubsub.listen():
+                if message["type"] != "message":
+                    continue
+                try:
+                    payload = json.loads(message["data"])
+                    target_user = payload.get("user_id")
+                    data = payload.get("data")
+                    ws = self.active_connections.get(target_user)
+                    if ws:
+                        await ws.send_json(data)
+                except Exception as e:
+                    logger.debug(f"PubSub message parse error: {e}")
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.error(f"PubSub listener error: {e}")
 
 
 ws_manager = ConnectionManagerWS()
