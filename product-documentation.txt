@@ -1,0 +1,2956 @@
+================================================================================
+    DATAMIND -- DEFINITIVE TECHNICAL DOCUMENTATION
+    AI-Powered Business Intelligence Platform
+    Version 1.0.0
+================================================================================
+
+Written for: Engineers joining the DataMind team
+Audience:    Full-stack developers, DevOps engineers, and technical leads
+Scope:       End-to-end system architecture, code walkthrough, deployment guide
+Last updated: February 2026
+
+
+================================================================================
+TABLE OF CONTENTS
+================================================================================
+
+1.  PRODUCT OVERVIEW
+2.  SYSTEM ARCHITECTURE -- END TO END
+3.  BACKEND DEEP DIVE
+4.  FRONTEND DEEP DIVE
+5.  INFRASTRUCTURE & DEPLOYMENT
+6.  DATA FLOW DIAGRAMS
+7.  API REFERENCE
+8.  CONFIGURATION REFERENCE
+9.  WHAT'S NEEDED FOR PRODUCTION AT A REAL COMPANY
+10. GLOSSARY
+
+
+================================================================================
+1. PRODUCT OVERVIEW
+================================================================================
+
+1.1 WHAT DATAMIND IS AND WHAT PROBLEM IT SOLVES
+------------------------------------------------
+
+DataMind is an AI-powered business intelligence (BI) platform that allows
+non-technical business users to ask questions about their data in plain English
+and receive answers in the form of SQL queries, data tables, charts, and
+natural-language insights -- all without writing a single line of SQL.
+
+The core problem it solves: In most organizations, getting an answer to a data
+question requires either (a) knowing SQL and having database access, or (b)
+waiting for an analyst to write a query and send results back. DataMind
+eliminates both bottlenecks by using Claude (Anthropic's LLM) to translate
+natural language into safe, read-only SQL, executing that SQL against the
+user's connected databases, and then analyzing the results with AI to produce
+human-readable business insights and automatic chart recommendations.
+
+Key capabilities:
+- Natural language to SQL translation powered by Anthropic Claude
+- Multi-database connectivity (PostgreSQL, MySQL, SQLite, CSV, Excel)
+- Automatic chart type recommendation and rendering
+- Dashboard builder with drag-and-drop widgets
+- Scheduled data alerts with threshold-based triggering
+- Multi-tenant architecture with organization-level data isolation
+- PDF and Excel export of query results
+- Audit logging for compliance tracking
+- Real-time notifications via WebSocket
+
+
+1.2 TARGET USERS AND USE CASES
+-------------------------------
+
+Primary users:
+- Business analysts who want self-service data access
+- Product managers who need ad-hoc reporting
+- Executives who want dashboards without relying on engineering
+- Data teams who want to provide a chat-based interface to their databases
+
+Use cases:
+- "What were our top 10 products by revenue last quarter?"
+- "Show me customer churn rate month-over-month for the DACH region"
+- "Alert me if daily active users drops below 1000"
+- Building executive dashboards from chat-generated queries
+- Exploring unfamiliar databases using AI-powered schema descriptions
+
+
+1.3 HIGH-LEVEL ARCHITECTURE DIAGRAM (ASCII)
+--------------------------------------------
+
+    +-------------------+
+    |   Browser (SPA)   |     Next.js 14, React 18, TypeScript
+    |   localhost:3000   |     Tailwind CSS, Recharts, Zustand, SWR
+    +--------+----------+
+             |
+             | HTTP / WebSocket
+             |
+    +--------v----------+
+    |     nginx :80      |     Reverse proxy
+    |  (docker service)  |     Routes /api/* -> backend
+    +---+----------+----+     Routes /ws   -> backend
+        |          |          Routes /*     -> frontend
+        |          |
+   +----v----+ +---v------+
+   | Backend  | | Frontend |
+   |  :8000   | |  :3000   |
+   | FastAPI  | | Next.js  |
+   | Uvicorn  | | Node 20  |
+   +----+-----+ +----------+
+        |
+        |  asyncpg / aiomysql / aiosqlite
+        |
+   +----v-----+    +--------+    +-------------+
+   |PostgreSQL |    | Redis  |    |  Customer   |
+   |  :5432    |    | :6379  |    |  Databases  |
+   | (app DB)  |    | broker |    | (connected) |
+   +-----------+    | cache  |    +-------------+
+                    +---+----+
+                        |
+              +---------+---------+
+              |                   |
+         +----v------+    +------v-----+
+         |  Celery   |    |  Celery    |
+         |  Worker   |    |  Beat      |
+         | (2 procs) |    | (scheduler)|
+         +-----------+    +------------+
+
+    External API:
+    +------------------+
+    | Anthropic Claude |    NL-to-SQL generation
+    | (claude-sonnet)  |    Analysis & visualization
+    +------------------+
+
+
+1.4 TECHNOLOGY STACK WITH VERSION REQUIREMENTS
+-----------------------------------------------
+
+Backend:
+  Python              3.12+
+  FastAPI             0.115.0     (ASGI web framework)
+  Uvicorn             0.30.0      (ASGI server)
+  SQLAlchemy          2.0.35      (async ORM, mapped_column style)
+  asyncpg             0.29.0      (PostgreSQL async driver)
+  aiomysql            0.2.0       (MySQL async driver)
+  aiosqlite           0.20.0      (SQLite async driver)
+  Anthropic SDK       0.39.0      (Claude API client)
+  sqlglot             25.0.0      (SQL parsing & validation)
+  Alembic             1.13.3      (database migrations)
+  Celery              5.4.0       (distributed task queue)
+  Redis (client)      5.1.1       (caching + Celery broker)
+  Pydantic            2.9.2       (data validation)
+  python-jose         3.3.0       (JWT encoding/decoding)
+  passlib + bcrypt    1.7.4       (password hashing)
+  cryptography        43.0.1      (Fernet AES encryption)
+  reportlab           4.2.4       (PDF generation)
+  openpyxl            3.1.5       (Excel generation)
+  pandas              2.2.3       (CSV/Excel file handling)
+  loguru              0.7.2       (structured logging)
+
+Frontend:
+  Node.js             20.x
+  Next.js             14.2.15     (App Router, standalone output)
+  React               18.3.1
+  TypeScript          5.6.3
+  Tailwind CSS        3.4.13
+  Zustand             5.0.0       (lightweight state management)
+  SWR                 2.2.5       (data fetching & caching)
+  Recharts            2.13.0      (chart rendering)
+  Radix UI            various     (accessible UI primitives)
+  Framer Motion       11.11.1     (animations)
+  Lucide React        0.451.0     (icons)
+  date-fns            4.1.0       (date formatting)
+  react-grid-layout   1.4.4       (dashboard grid layout)
+  cmdk                1.0.0       (command palette)
+  papaparse           5.4.1       (CSV parsing)
+  xlsx                0.18.5      (Excel parsing)
+
+Infrastructure:
+  Docker Compose      3.9         (service orchestration)
+  PostgreSQL          16-alpine   (application database)
+  Redis               7-alpine    (task broker + cache)
+  nginx               alpine      (reverse proxy)
+
+
+================================================================================
+2. SYSTEM ARCHITECTURE -- END TO END
+================================================================================
+
+2.1 REQUEST LIFECYCLE: FROM BROWSER CLICK TO DATABASE QUERY AND BACK
+---------------------------------------------------------------------
+
+Here is exactly what happens when a user types "What were our top products?"
+in the chat input and presses Enter:
+
+1. BROWSER: The ChatContainer component calls apiClient('/chat/message', ...)
+   which sends a POST to http://localhost:8000/api/v1/chat/message with:
+   - Headers: { Authorization: "Bearer <JWT>", Content-Type: "application/json" }
+   - Body: { message: "What were our top products?", connection_id: "<uuid>",
+             session_id: "<uuid or null>" }
+
+2. NGINX: Routes /api/* to upstream backend:8000. Sets X-Real-IP and
+   X-Forwarded-For headers.
+
+3. FASTAPI MIDDLEWARE CHAIN (in reverse order of add_middleware):
+   a. RateLimitMiddleware: Checks in-memory dict of IP -> timestamps.
+      If >100 requests/min from this IP, returns 429 with Retry-After.
+   b. RequestLoggingMiddleware: Records start time, delegates to next
+      middleware, then logs "POST /api/v1/chat/message -> 200 (245.3ms)".
+   c. CORSMiddleware: Checks Origin header against CORS_ORIGINS. Adds
+      Access-Control-Allow-* headers.
+
+4. DEPENDENCY INJECTION:
+   a. get_db(): Opens an async SQLAlchemy session from the connection pool.
+   b. get_current_user(): Extracts "Bearer <token>" from Authorization header,
+      calls decode_jwt(token) which validates signature and expiry using
+      HS256 + JWT_SECRET. Extracts user_id from "sub" claim. Queries
+      SELECT * FROM users WHERE id = <user_id>. Returns User ORM object.
+      If token is invalid/expired/user not found/inactive -> 401.
+
+5. ENDPOINT HANDLER (chat.py: send_message):
+   a. If session_id provided, verify session belongs to user (WHERE
+      session_id = X AND user_id = Y). If not found -> 404.
+   b. If session_id is null, create a new ChatSession with title = first
+      80 chars of the message.
+   c. Persist the user's ChatMessage (role="user").
+   d. In the REST fallback, create a placeholder assistant ChatMessage.
+   e. Return ChatResponse with session_id and message_id.
+
+   Note: The FULL AI pipeline (SQL generation -> execution -> analysis) is
+   designed to run via WebSocket for real-time streaming. The REST endpoint
+   is a fallback that returns a placeholder response.
+
+6. RESPONSE JOURNEY BACK:
+   - SQLAlchemy session commits (auto-commit in get_db dependency).
+   - FastAPI serializes the Pydantic response model to JSON.
+   - Middleware logs the response time.
+   - nginx proxies the response back to the browser.
+
+7. BROWSER: apiClient receives JSON, ChatContainer adds the assistant message
+   to the Zustand chat store, which triggers a React re-render showing the
+   MessageBubble component.
+
+
+2.2 HOW AUTHENTICATION FLOWS
+------------------------------
+
+DataMind uses a dual-token JWT system: short-lived access tokens for API
+authorization and long-lived refresh tokens for session continuity.
+
+TOKEN CREATION (login):
+  1. User POSTs { email, password } to /api/v1/auth/login
+  2. AuthService.login() queries User by email
+  3. passlib's bcrypt verify checks password against stored hash
+  4. If valid, creates token_data = {sub: user_id, org_id, email, role}
+  5. create_access_token(token_data):
+     - Adds {exp: now + 60 min, type: "access"} to payload
+     - Signs with HS256 using JWT_SECRET
+  6. create_refresh_token(token_data):
+     - Adds {exp: now + 7 days, type: "refresh"} to payload
+     - Signs with HS256 using JWT_REFRESH_SECRET (different key!)
+  7. Returns TokenResponse: { access_token, refresh_token, user: {...} }
+
+TOKEN STORAGE (frontend):
+  - localStorage.setItem('access_token', data.access_token)
+  - localStorage.setItem('refresh_token', data.refresh_token)
+
+TOKEN USAGE (every API request):
+  - apiClient reads token from localStorage
+  - Sets header: Authorization: Bearer <access_token>
+  - If response is 401, clears localStorage and redirects to /login
+
+TOKEN VALIDATION (backend, every request):
+  - get_current_user dependency extracts Bearer token from header
+  - decode_jwt() verifies signature, expiry, and type == "access"
+  - Queries User by sub (user_id) claim
+  - Checks user.is_active
+
+TOKEN REFRESH:
+  - POST /api/v1/auth/refresh with { refresh_token: "<token>" }
+  - AuthService.refresh() decodes with JWT_REFRESH_SECRET
+  - Validates type == "refresh"
+  - Looks up user, generates new access + refresh token pair
+  - Note: The frontend does NOT currently implement automatic refresh
+    on 401 -- it redirects to login instead. This is an area for
+    improvement.
+
+SECURITY NOTES:
+  - Access and refresh tokens use DIFFERENT secrets (JWT_SECRET vs
+    JWT_REFRESH_SECRET) so a compromised access token cannot be used
+    to generate refresh tokens.
+  - Tokens include org_id and role claims for authorization context.
+  - The Settings validator REJECTS insecure default values ("change-me")
+    at startup, preventing accidental deployment with weak secrets.
+
+
+2.3 HOW MULTI-TENANCY WORKS
+-----------------------------
+
+DataMind uses an organization-based multi-tenancy model where every data
+entity is scoped to an org_id foreign key.
+
+Data isolation model:
+  - Organization is the root tenant entity
+  - Users belong to exactly one Organization (via org_id FK)
+  - Connections belong to an Organization (via org_id FK)
+  - Dashboards belong to an Organization (via org_id FK)
+  - Alerts belong to an Organization (via org_id FK)
+  - SavedQueries belong to an Organization (via org_id FK)
+  - ChatSessions belong to a User (which belongs to an Organization)
+
+How isolation is enforced:
+  Every API endpoint that returns or modifies data includes a WHERE clause
+  scoping to the current user's org_id. For example:
+
+  # In connections.py:
+  select(Connection).where(
+      Connection.org_id == user.org_id  # <-- tenant isolation
+  )
+
+  # In dashboards.py:
+  select(Dashboard).where(
+      Dashboard.id == dashboard_id,
+      Dashboard.org_id == org_id,       # <-- tenant isolation
+  )
+
+  This pattern is consistent across ALL CRUD endpoints.
+
+Registration flow:
+  When a user registers, they create BOTH an Organization AND a User
+  simultaneously. The first user in every org gets role="admin".
+
+Organization limits:
+  - max_connections: 5 (default, per plan)
+  - max_users: 10 (default, per plan)
+  - plan: "free" (default)
+
+  These limits are stored but NOT yet enforced in the API layer.
+  Production deployment should add enforcement checks.
+
+
+2.4 HOW THE AI CHAT PIPELINE WORKS STEP-BY-STEP
+-------------------------------------------------
+
+The AIEngine class (backend/app/services/ai_engine.py) is the orchestrator.
+Here is the exact sequence of operations when process_message() is called:
+
+  Step 1: LOAD SCHEMA CONTEXT
+    SchemaDiscoverer.get_schema_context(connection_id, db)
+    - Queries all SchemaTable rows for this connection_id
+    - For each table, queries SchemaColumn rows ordered by ordinal_position
+    - Builds a text representation like:
+        ### Table: orders
+        Description: Customer purchase orders
+        Rows: ~150,000
+          - id (uuid) [PK]
+          - customer_id (uuid) [FK -> customers.id]
+          - total_amount (numeric) -- "Order Total"
+          - created_at (timestamp)
+    - This text is injected into the SQL generation prompt as the schema
+      reference for Claude.
+
+  Step 2: LOAD CONDENSED CONVERSATION HISTORY
+    ConversationManager.get_condensed_history(session_id, db, max_turns=10)
+    - Queries the last 20 ChatMessage rows for this session (10 turns x 2
+      messages per turn)
+    - For user messages: includes the full content
+    - For assistant messages: includes ONLY the context_summary field
+      (e.g., "Showed top 10 products by Q4 revenue; DACH region led at 4.8M")
+    - This reduces token usage from ~15,000 tokens to ~500 tokens per request.
+
+  Step 3: GENERATE SQL
+    SQLGenerator.generate(user_message, schema_context, history)
+    - Constructs the SYSTEM_PROMPT_SQL_GENERATION prompt, which instructs
+      Claude to:
+      - Analyze the user's question for metrics, dimensions, filters
+      - Generate a single SELECT statement using only tables/columns in the
+        provided schema
+      - Follow conventions: table aliases, ROUND, NULLIF, COALESCE, etc.
+      - Respond with <reasoning>...</reasoning> and <sql>...</sql> tags
+    - Calls Anthropic Messages API: claude-sonnet-4-20250514, max_tokens=2000
+    - Parses response to extract SQL from <sql> tags (or ```sql fences)
+    - Returns: { sql, reasoning, raw_response, token_usage }
+    - If Claude determines the question is not a data question:
+      sql = "NOT_DATA_QUERY"
+    - If Claude cannot answer with available schema:
+      sql = "CANNOT_ANSWER"
+
+  Step 4: VALIDATE SQL (sqlglot parser, NOT regex)
+    SQLSafetyValidator.validate(generated_sql)
+    - Parses SQL into an AST using sqlglot.parse()
+    - Rejects multi-statement queries (exactly 1 statement required)
+    - Rejects non-SELECT statements (INSERT, UPDATE, DELETE, DROP, CREATE,
+      ALTER, Command, Transaction, Set)
+    - Walks the entire AST tree to check for forbidden expression types
+      nested inside subqueries
+    - If safe: normalizes SQL to PostgreSQL dialect with pretty-printing
+    - Returns: { is_safe: bool, reason: str|None, parsed_sql: str|None }
+
+  Step 5: CHECK CACHE -> EXECUTE
+    - Computes cache_key = SHA256("{connection_id}:{sql}")
+    - Checks Redis via CacheService.get(cache_key)
+    - If cache HIT: uses cached result, logs it
+    - If cache MISS:
+      a. QueryExecutor.execute(connection_id, sql, db, timeout=30, max_rows=10000)
+         - ConnectionManager.get_connector_internal() creates the appropriate
+           connector (PostgreSQL/MySQL/SQLite)
+         - Connector.execute_query(sql, timeout, max_rows)
+         - Returns: { data: {columns, rows, row_count}, error, execution_time_ms }
+      b. If execution fails:
+         RETRY LOGIC:
+         - Constructs a retry prompt including the error message
+         - Calls SQLGenerator.generate() again with error context
+         - Validates the retry SQL
+         - Executes the retry SQL
+         - Merges token_usage from both attempts
+      c. If still error after retry: returns error to user
+      d. If success: stores result in Redis with 300s TTL
+
+  Step 6: ANALYZE + VISUALIZE (SINGLE Claude API call)
+    AnalyzeAndVisualize.analyze(user_message, sql, result_data)
+    - Takes the query results (limited to 50 rows for the prompt)
+    - Formats them as a readable table for Claude
+    - Uses SYSTEM_PROMPT_ANALYZE_AND_VISUALIZE which instructs Claude to:
+      a. Write a business insight (lead with the answer, use specific numbers,
+         highlight surprises, suggest follow-up questions)
+      b. Generate a context_summary (one sentence for conversation memory)
+      c. Recommend a chart type (bar, line, area, pie, scatter, kpi, table)
+         with specific column mappings
+    - Claude responds in JSON format:
+      {
+        "content": "Your top product was Widget Pro at EUR 4.8M...",
+        "context_summary": "Showed top 10 products by Q4 revenue",
+        "chart_config": {
+          "chart_type": "bar",
+          "x_column": "product_name",
+          "y_column": "revenue",
+          "title": "Top Products by Revenue"
+        }
+      }
+
+  Step 7: RETURN RESPONSE
+    Returns a ChatResponse with:
+    - content: the AI-written business insight
+    - context_summary: for future conversation context
+    - generated_sql: the SQL that was executed
+    - query_result_preview: first 100 rows of results
+    - full_result_row_count: total row count
+    - chart_config: visualization recommendation
+    - execution_time_ms: query performance metric
+    - token_usage: { input_tokens, output_tokens } (merged from all Claude calls)
+
+
+2.5 HOW REAL-TIME FEATURES WORK
+---------------------------------
+
+WebSocket connection:
+
+  Backend (backend/app/api/websocket.py):
+  - Endpoint: ws://backend:8000/ws?token=<JWT>
+  - On connect: validates JWT from query parameter (same decode_jwt as REST)
+  - If invalid/expired: closes with code 4001
+  - If valid: stores WebSocket in ConnectionManagerWS.active_connections dict
+    keyed by user_id
+  - Message loop handles:
+    - "ping" -> responds "pong" (keepalive)
+    - "cancel_query" -> logs cancellation request
+    - Unknown events -> logged as debug
+
+  Frontend (frontend/src/hooks/use-websocket.ts):
+  - useWebSocket hook creates WebSocket connection on mount
+  - Reads access_token from localStorage for auth
+  - Auto-reconnects after 3 seconds on disconnect
+  - Exposes send() function to push messages
+  - Calls onMessage, onConnect, onDisconnect callbacks
+
+  Notification polling:
+  - NotificationBell component polls /alerts/events/unread every 30 seconds
+  - This is HTTP polling, not WebSocket push (WebSocket is available but
+    the alert notification delivery currently uses polling)
+
+
+2.6 HOW BACKGROUND TASKS WORK
+-------------------------------
+
+Celery configuration (backend/app/tasks/celery_app.py):
+  - Broker: Redis (settings.REDIS_URL)
+  - Backend: Redis (same)
+  - Serialization: JSON
+  - Timezone: UTC
+  - Included task modules:
+    - app.tasks.alert_checker
+    - app.tasks.schema_refresh
+    - app.tasks.report_generator
+
+Celery Beat schedule (periodic tasks):
+  1. check-alerts: Every 60 seconds
+     Task: app.tasks.alert_checker.check_alerts
+  2. refresh-schemas: Every 21,600 seconds (6 hours)
+     Task: app.tasks.schema_refresh.refresh_all_schemas
+
+Task 1: Alert Checking (alert_checker.py)
+  - Queries all Alert rows WHERE is_active = true
+  - For each alert:
+    a. Validates alert's query_sql with SQLSafetyValidator
+    b. Creates a connector via ConnectionManager (uses readonly credentials)
+    c. Executes the alert's SQL query (timeout=30s, max_rows=1)
+    d. Extracts the first numeric value from the result
+    e. Evaluates the condition:
+       - "above": value > threshold
+       - "below": value < threshold
+       - "change_pct": |value - last_value| / last_value * 100 > threshold
+       - "anomaly": placeholder (not yet implemented)
+    f. If triggered: creates an AlertEvent with human-readable message
+    g. Updates alert.last_value, last_checked_at, consecutive_failures
+  - Uses asyncio.run() to run async code inside Celery's sync task
+
+Task 2: Schema Refresh (schema_refresh.py)
+  - Queries all Connection rows WHERE is_active = true
+  - For each connection:
+    a. Gets existing SchemaTable rows from DB
+    b. Creates connector and introspects live database (get_tables)
+    c. Detects new and removed tables
+    d. Removes SchemaTable rows for tables that no longer exist
+    e. Uses SchemaDiscoverer.discover_schema() to upsert tables/columns
+    f. Collects sample values for new columns
+    g. Updates connection.last_synced_at
+  - Logs summary: X succeeded, Y failed, Z new tables, W removed
+
+Task 3: Report Generator (report_generator.py)
+  - Placeholder: TODO not yet implemented
+  - Intended to generate PDF/Excel reports for scheduled dashboard emails
+
+
+================================================================================
+3. BACKEND DEEP DIVE
+================================================================================
+
+3.1 PROJECT STRUCTURE
+----------------------
+
+backend/
+  Dockerfile                    Multi-stage Docker build (deps + runtime)
+  requirements.txt              Pinned Python dependencies
+  pyproject.toml                Python project metadata
+  alembic.ini                   Alembic migration configuration
+  alembic/
+    env.py                      Async migration environment
+    script.py.mako              Migration template
+  app/
+    __init__.py                 Package marker
+    main.py                     FastAPI app factory, middleware, exception handlers
+    config.py                   Settings class (pydantic-settings, env vars)
+    dependencies.py             DI functions: get_current_user, require_role
+    core/
+      __init__.py
+      constants.py              Roles, connection types, widget types, limits
+      database.py               Async engine, session factory, get_db dependency
+      exceptions.py             Custom exception hierarchy
+      middleware.py             Request logging, in-memory rate limiting
+      security.py               JWT, bcrypt, Fernet encryption
+      sql_validator.py          sqlglot-based SQL safety validation
+    models/
+      __init__.py               Imports all models for Alembic detection
+      base.py                   Base, TimestampMixin, BaseModel (UUID PK)
+      organization.py           Organization (tenant root)
+      user.py                   User (org member)
+      connection.py             Data source connection
+      schema_table.py           Table metadata from schema introspection
+      schema_column.py          Column metadata with AI enrichments
+      chat_session.py           Chat conversation session
+      chat_message.py           Individual chat message with AI metadata
+      dashboard.py              Dashboard container
+      widget.py                 Dashboard widget (chart/table/kpi)
+      saved_query.py            Bookmarked SQL queries
+      alert.py                  Alert definition with threshold config
+      alert_event.py            Triggered alert instances
+      upload.py                 File upload tracking
+      audit_log.py              Compliance audit trail
+    schemas/
+      __init__.py
+      auth.py                   RegisterRequest, LoginRequest, TokenResponse
+      chat.py                   ChatMessageRequest, ChatResponse, ChatSessionResponse
+      connection.py             ConnectionCreate, ConnectionResponse, TestResult
+      dashboard.py              DashboardCreate, WidgetCreate, PinFromChatRequest
+      alert.py                  AlertCreate, AlertResponse, AlertEventResponse
+      common.py                 ListResponse[T], PaginationParams, ErrorResponse
+      export.py                 ExportRequest
+    api/
+      __init__.py
+      router.py                 Main router aggregating all v1 sub-routers
+      websocket.py              WebSocket endpoint + connection manager
+      v1/
+        __init__.py
+        auth.py                 POST /register, /login, /refresh
+        health.py               GET /health
+        connections.py           CRUD + test connection
+        chat.py                 Message send, history, session CRUD
+        schema.py               Schema retrieval + refresh trigger
+        query.py                Direct query execution, saved queries
+        dashboards.py           Dashboard + Widget CRUD, refresh, pin-from-chat
+        alerts.py               Alert CRUD, toggle, events, mark-read
+        export.py               POST /pdf, /excel
+        upload.py               POST /csv, /excel (placeholder)
+        audit.py                GET paginated audit logs (admin only)
+    services/
+      __init__.py
+      ai_engine.py              Main AI orchestrator (the "brain")
+      auth_service.py           Registration + login + refresh logic
+      chat_service.py           Session/message persistence helpers
+      connection_manager.py     Connector factory with credential decryption
+      query_executor.py         Safe SQL execution with validation + timeout
+      schema_discoverer.py      Database introspection + schema context builder
+      dashboard_service.py      Dashboard/widget CRUD helpers
+      alert_service.py          Alert/event CRUD helpers
+      cache_service.py          Redis query result caching
+      export_service.py         PDF (reportlab) and Excel (openpyxl) generation
+      upload_service.py         CSV/Excel -> SQLite ingestion pipeline
+      audit_service.py          Static audit log creation
+    ai/
+      __init__.py
+      prompts.py                System prompts (SQL generation, analysis, schema enrichment)
+      sql_generator.py          NL -> SQL via Claude API
+      analyze_and_visualize.py  Merged insight + chart recommendation (single API call)
+      conversation.py           Condensed conversation history for token efficiency
+      anomaly_detector.py       Z-score anomaly detection for alerts
+      schema_enricher.py        AI-generated schema descriptions
+    connectors/
+      __init__.py
+      base.py                   Abstract BaseConnector + data classes
+      postgres.py               PostgreSQL via asyncpg
+      mysql.py                  MySQL via aiomysql
+      sqlite.py                 SQLite via aiosqlite
+      csv_connector.py          CSV -> SQLite wrapper
+      excel_connector.py        Excel -> SQLite wrapper (all sheets)
+    tasks/
+      __init__.py
+      celery_app.py             Celery app config + beat schedule
+      alert_checker.py          Periodic alert evaluation
+      schema_refresh.py         Periodic schema introspection
+      report_generator.py       Scheduled report generation (placeholder)
+  scripts/
+    seed_demo_data.py           Demo data seeder
+    setup_readonly_db_user.sql  SQL script for creating read-only DB users
+  tests/
+    __init__.py
+    conftest.py                 Shared test fixtures
+    unit/
+      test_sql_validator.py     SQL validation unit tests
+    integration/
+      test_api_auth.py          Auth endpoint integration tests
+    ai/
+      (empty, placeholder)
+    e2e/
+      (empty, placeholder)
+
+
+3.2 FASTAPI APPLICATION LIFECYCLE
+----------------------------------
+
+STARTUP (create_app in main.py):
+
+1. Lifespan context manager:
+   - On startup: logs "Starting DataMind API..."
+   - On shutdown: logs "Shutting down DataMind API..."
+     and disposes the SQLAlchemy async engine (closes all connections)
+
+2. Middleware chain (applied in reverse order):
+   a. CORSMiddleware:
+      - allow_origins from settings.CORS_ORIGINS (default: ["http://localhost:3000"])
+      - allow_credentials=True
+      - allow_methods=["*"]
+      - allow_headers=["*"]
+   b. RequestLoggingMiddleware:
+      - Logs every request: METHOD PATH -> STATUS (TIMEms)
+   c. RateLimitMiddleware:
+      - 100 requests/minute per IP (in-memory dict)
+      - Skips /health endpoint
+      - Prunes stale IPs when dict grows beyond 1000 entries
+      - Returns 429 with Retry-After header when exceeded
+
+3. Router mounting:
+   - api_router at prefix /api/v1 (all REST endpoints)
+   - websocket_router at root (ws:// endpoint at /ws)
+
+4. Exception handlers:
+   - AuthenticationError -> 401
+   - AuthorizationError -> 403
+   - NotFoundError -> 404
+   - DataMindException (base) -> 400
+
+REQUEST HANDLING:
+
+For every request, FastAPI:
+  1. Runs through the middleware chain (rate limit -> logging -> CORS)
+  2. Matches the URL to a route handler
+  3. Resolves dependency injections (get_db, get_current_user, require_role)
+  4. Calls the route handler
+  5. If handler raises an exception, matches to registered exception handlers
+  6. Serializes the response through Pydantic model validation
+  7. Returns through the middleware chain in reverse
+
+
+3.3 DATABASE LAYER
+-------------------
+
+ENGINE & CONNECTION POOL (core/database.py):
+
+  engine = create_async_engine(
+      settings.DATABASE_URL,       # postgresql+asyncpg://...
+      echo=settings.DEBUG,         # SQL logging in debug mode
+      pool_size=20,                # Maintained connections
+      max_overflow=10,             # Extra connections under load
+      pool_pre_ping=True,          # Verify connections before use
+  )
+
+  Session factory: async_sessionmaker with expire_on_commit=False
+  (prevents lazy load errors after commit in async context)
+
+  get_db() dependency:
+  - Yields an async session
+  - Auto-commits on successful return
+  - Auto-rollbacks on exception
+  - Always closes the session
+
+MODELS (every model with fields and relationships):
+
+  BaseModel (abstract):
+    id          UUID, PK, auto-generated
+    created_at  DateTime(tz), auto-set to UTC now
+    updated_at  DateTime(tz), auto-set to UTC now, auto-updated on change
+
+  Organization:
+    id, created_at, updated_at (from BaseModel)
+    name        String(255), NOT NULL
+    slug        String(100), UNIQUE, NOT NULL (URL-safe identifier)
+    plan        String(50), default "free"
+    max_connections  Integer, default 5
+    max_users   Integer, default 10
+    -- relationships: users, connections, dashboards, saved_queries, alerts
+
+  User:
+    id, created_at, updated_at (from BaseModel)
+    org_id      UUID, FK -> organizations.id (CASCADE), NOT NULL
+    email       String(255), NOT NULL
+    password_hash  String(255), NOT NULL (bcrypt hash)
+    full_name   String(255), NOT NULL
+    role        String(20), default "analyst" (admin|analyst|viewer)
+    avatar_url  Text, nullable
+    is_active   Boolean, default true
+    -- unique constraint: (org_id, email) -- same email can exist in different orgs
+    -- relationships: organization, chat_sessions, uploads
+
+  Connection:
+    id, created_at, updated_at (from BaseModel)
+    org_id      UUID, FK -> organizations.id (CASCADE), indexed
+    created_by_id  UUID, FK -> users.id (SET NULL), nullable
+    name        String(255), NOT NULL
+    type        String(50), NOT NULL (postgresql|mysql|sqlite|csv|excel)
+    host        String(255), nullable
+    port        Integer, nullable
+    database_name  String(255), nullable
+    username    String(255), nullable
+    password_encrypted  Text, nullable (Fernet AES encrypted)
+    readonly_username  String(255), nullable
+    readonly_password_encrypted  Text, nullable (Fernet AES encrypted)
+    ssl_mode    String(50), default "prefer"
+    extra_config  JSONB, default {}
+    file_path   Text, nullable (for CSV/Excel/SQLite)
+    is_active   Boolean, default true
+    last_synced_at  DateTime(tz), nullable
+    -- relationships: organization, schema_tables, widgets
+
+  SchemaTable:
+    id, created_at, updated_at (from BaseModel)
+    connection_id  UUID, FK -> connections.id (CASCADE)
+    table_name  String(255), NOT NULL
+    table_type  String(50), default "table" (table|view)
+    row_count   BigInteger, nullable
+    ai_description  Text, nullable (Claude-generated)
+    -- unique constraint: (connection_id, table_name)
+    -- relationships: connection, columns
+
+  SchemaColumn:
+    id, created_at, updated_at (from BaseModel)
+    schema_table_id  UUID, FK -> schema_tables.id (CASCADE), indexed
+    column_name     String(255), NOT NULL
+    data_type       String(100), NOT NULL
+    is_nullable     Boolean, default true
+    is_primary_key  Boolean, default false
+    is_foreign_key  Boolean, default false
+    fk_references   String(500), nullable (e.g., "customers.id")
+    ordinal_position  Integer, nullable
+    sample_values   JSONB, nullable (up to 10 distinct values)
+    ai_description  Text, nullable (Claude-generated)
+    ai_business_term  String(255), nullable (e.g., "cust_nm" -> "Customer Name")
+    distinct_count  BigInteger, nullable
+    null_percentage Numeric(5,2), nullable
+    -- unique constraint: (schema_table_id, column_name)
+    -- relationships: schema_table
+
+  ChatSession:
+    id, created_at, updated_at (from BaseModel)
+    user_id       UUID, FK -> users.id (CASCADE), NOT NULL
+    connection_id UUID, FK -> connections.id (SET NULL), nullable
+    title         String(500), nullable
+    is_pinned     Boolean, default false
+    -- relationships: user, messages
+
+  ChatMessage (NOT BaseModel -- no updated_at, messages are immutable):
+    id            UUID, PK, auto-generated
+    session_id    UUID, FK -> chat_sessions.id (CASCADE), indexed
+    role          String(20), NOT NULL ("user"|"assistant")
+    content       Text, NOT NULL
+    generated_sql Text, nullable
+    sql_was_executed  Boolean, default false
+    query_result_preview  JSONB, nullable (max 100 rows)
+    full_result_row_count  Integer, nullable
+    chart_config  JSONB, nullable
+    execution_time_ms  Integer, nullable
+    error_message Text, nullable
+    token_usage   JSONB, nullable ({input_tokens, output_tokens})
+    context_summary  String(500), nullable (condensed for conversation context)
+    created_at    DateTime(tz), auto-set
+
+  Dashboard:
+    id, created_at, updated_at (from BaseModel)
+    org_id        UUID, FK -> organizations.id (CASCADE), indexed
+    created_by_id UUID, FK -> users.id (SET NULL), nullable
+    title         String(255), NOT NULL
+    description   Text, nullable
+    is_shared     Boolean, default false
+    layout_config JSONB, default [] (grid positions)
+    -- relationships: organization, widgets
+
+  Widget:
+    id, created_at, updated_at (from BaseModel)
+    dashboard_id  UUID, FK -> dashboards.id (CASCADE), indexed
+    connection_id UUID, FK -> connections.id (SET NULL), nullable
+    title         String(255), NOT NULL
+    widget_type   String(50), NOT NULL (chart|table|kpi|text)
+    query_sql     Text, NOT NULL
+    chart_config  JSONB, default {}
+    refresh_interval_seconds  Integer, default 300 (5 minutes)
+    position      JSONB, default {} ({x, y, w, h})
+    last_refreshed_at  DateTime(tz), nullable
+    last_error    Text, nullable
+    -- relationships: dashboard, connection
+
+  Alert:
+    id, created_at, updated_at (from BaseModel)
+    org_id        UUID, FK -> organizations.id (CASCADE)
+    created_by_id UUID, FK -> users.id (SET NULL), nullable
+    connection_id UUID, FK -> connections.id (CASCADE)
+    name          String(255), NOT NULL
+    description   Text, nullable
+    query_sql     Text, NOT NULL
+    condition_type  String(50), NOT NULL (above|below|change_pct|anomaly)
+    threshold_value  Numeric(20,4), nullable
+    check_interval_minutes  Integer, default 60
+    is_active     Boolean, default true
+    last_checked_at  DateTime(tz), nullable
+    last_value    Numeric(20,4), nullable
+    consecutive_failures  Integer, default 0
+    notification_channels  JSONB, default ["in_app"]
+    -- relationships: organization, events
+
+  AlertEvent (NOT BaseModel -- no updated_at):
+    id            UUID, PK, auto-generated
+    alert_id      UUID, FK -> alerts.id (CASCADE)
+    triggered_value  Numeric(20,4), NOT NULL
+    message       Text, NOT NULL
+    is_read       Boolean, default false
+    created_at    DateTime(tz), auto-set
+
+  SavedQuery:
+    id, created_at, updated_at (from BaseModel)
+    org_id        UUID, FK -> organizations.id (CASCADE)
+    created_by_id UUID, FK -> users.id (SET NULL), nullable
+    connection_id UUID, FK -> connections.id (SET NULL), nullable
+    name          String(255), NOT NULL
+    description   Text, nullable
+    sql_text      Text, NOT NULL
+    tags          ARRAY(String), default []
+    is_shared     Boolean, default false
+
+  Upload (NOT BaseModel):
+    id            UUID, PK, auto-generated
+    user_id       UUID, FK -> users.id (CASCADE)
+    connection_id UUID, FK -> connections.id (CASCADE)
+    original_filename  String(500), NOT NULL
+    file_size_bytes  BigInteger, nullable
+    mime_type     String(100), nullable
+    storage_path  Text, NOT NULL
+    row_count     Integer, nullable
+    column_count  Integer, nullable
+    created_at    DateTime(tz), auto-set
+
+  AuditLog (NOT BaseModel):
+    id            UUID, PK, auto-generated
+    org_id        UUID, FK -> organizations.id (SET NULL), nullable
+    user_id       UUID, FK -> users.id (SET NULL), nullable
+    action        String(100), NOT NULL (e.g., "auth.login", "connection.create")
+    resource_type String(100), nullable (e.g., "connection", "dashboard")
+    resource_id   UUID, nullable
+    details       JSONB, default {}
+    ip_address    String(45), nullable (IPv4 or IPv6)
+    created_at    DateTime(tz), indexed, auto-set
+
+ALEMBIC MIGRATIONS:
+  - Config: backend/alembic.ini
+  - env.py: Async-aware migration runner using async_engine_from_config
+  - URL is overridden from settings.DATABASE_URL (not hardcoded in .ini)
+  - Target metadata: Base.metadata (imports all models via app.models.__init__)
+  - Create migration: alembic revision --autogenerate -m "description"
+  - Apply migrations: alembic upgrade head
+
+
+3.4 API LAYER: EVERY ENDPOINT GROUP
+-------------------------------------
+
+All endpoints are prefixed with /api/v1 unless otherwise noted.
+
+--- HEALTH ---
+  GET /health
+    Auth: None
+    Response: { status: "healthy", service: "datamind-api", version: "1.0.0" }
+
+--- AUTH ---
+  POST /auth/register
+    Auth: None
+    Body: { email, password (min 8 chars), full_name, org_name, org_slug }
+    Response: 201, UserResponse { id, email, full_name, role, org_id, is_active }
+    Errors: 400 if slug taken or email exists
+    Side effects: Creates Organization + User (role=admin) + audit log
+
+  POST /auth/login
+    Auth: None
+    Body: { email, password }
+    Response: 200, TokenResponse { access_token, refresh_token, token_type, user }
+    Errors: 401 if invalid credentials, 401 if account deactivated
+    Side effects: Audit log
+
+  POST /auth/refresh
+    Auth: None (but requires valid refresh_token)
+    Body: refresh_token (query param)
+    Response: 200, TokenResponse (new access + refresh token pair)
+    Errors: 401 if invalid/expired refresh token
+
+--- CONNECTIONS ---
+  GET /connections/
+    Auth: Any authenticated user
+    Response: ListResponse[ConnectionResponse] (scoped to user's org)
+    Note: password fields are NEVER included in response
+
+  POST /connections/
+    Auth: admin or analyst role
+    Body: ConnectionCreate { name, type, host, port, database_name, username,
+          password, ssl_mode, file_path }
+    Response: 201, ConnectionResponse
+    Side effects: Password encrypted via Fernet before storage, audit log
+
+  GET /connections/{connection_id}
+    Auth: Any authenticated user
+    Response: ConnectionResponse (scoped to user's org)
+    Errors: 404 if not found or not in user's org
+
+  DELETE /connections/{connection_id}
+    Auth: admin role only
+    Response: 204
+    Side effects: Cascades to schema_tables, schema_columns, audit log
+
+  POST /connections/{connection_id}/test
+    Auth: Any authenticated user
+    Response: ConnectionTestResult { success, message, tables_found }
+    Behavior: Creates connector, runs test_connection(), counts tables if success
+
+--- SCHEMA ---
+  GET /schema/{connection_id}
+    Auth: Any authenticated user
+    Response: { tables: [] } (placeholder -- needs full implementation)
+    Validation: Checks connection belongs to user's org
+
+  POST /schema/{connection_id}/refresh
+    Auth: Any authenticated user
+    Response: { status: "refreshing" } (placeholder)
+    Validation: Checks connection belongs to user's org
+
+--- CHAT ---
+  POST /chat/message
+    Auth: Any authenticated user
+    Body: ChatMessageRequest { message (1-5000 chars), connection_id, session_id? }
+    Response: ChatResponse { content, session_id, message_id }
+    Behavior: Creates session if needed, persists user message, returns placeholder
+    Note: This is the REST fallback. Full AI runs via WebSocket.
+
+  GET /chat/history/{session_id}
+    Auth: Any authenticated user (owner only)
+    Response: ListResponse[ChatMessageResponse] ordered by created_at ASC
+    Errors: 404 if session not owned by user
+
+  GET /chat/sessions
+    Auth: Any authenticated user
+    Response: ListResponse[ChatSessionResponse] ordered by updated_at DESC
+
+  DELETE /chat/sessions/{session_id}
+    Auth: Any authenticated user (owner only)
+    Response: 204 (cascades to messages)
+
+  PATCH /chat/sessions/{session_id}
+    Auth: Any authenticated user (owner only)
+    Body: ChatSessionUpdate { title?, is_pinned? }
+    Response: ChatSessionResponse
+
+--- QUERY ---
+  POST /query/execute
+    Auth: Any authenticated user
+    Response: { results: [] } (placeholder)
+
+  GET /query/saved
+    Auth: Any authenticated user
+    Response: { data: [...], count: N } (scoped to user's org)
+
+--- DASHBOARDS ---
+  GET /dashboards/
+    Auth: Any authenticated user
+    Response: ListResponse[DashboardResponse] with widget_count (subquery)
+
+  POST /dashboards/
+    Auth: Any authenticated user
+    Body: DashboardCreate { title, description? }
+    Response: 201, DashboardResponse
+    Side effects: Audit log
+
+  GET /dashboards/{dashboard_id}
+    Auth: Any authenticated user
+    Response: DashboardWithWidgets (includes all widgets via selectinload)
+
+  PUT /dashboards/{dashboard_id}
+    Auth: Any authenticated user
+    Body: DashboardUpdate { title?, description?, is_shared?, layout_config? }
+    Response: DashboardResponse
+
+  DELETE /dashboards/{dashboard_id}
+    Auth: Any authenticated user
+    Response: 204 (cascades to widgets)
+    Side effects: Audit log
+
+  POST /dashboards/{dashboard_id}/widgets
+    Auth: Any authenticated user
+    Body: WidgetCreate { title, widget_type, query_sql, connection_id,
+          chart_config?, refresh_interval_seconds? }
+    Response: 201, WidgetResponse
+    Validation: SQL safety check, connection org verification
+
+  PUT /dashboards/{dashboard_id}/widgets/{widget_id}
+    Auth: Any authenticated user
+    Body: WidgetUpdate { title?, widget_type?, chart_config?, position?,
+          refresh_interval_seconds?, query_sql? }
+    Response: WidgetResponse
+    Validation: SQL safety check if query_sql is updated
+
+  DELETE /dashboards/{dashboard_id}/widgets/{widget_id}
+    Auth: Any authenticated user
+    Response: 204
+
+  POST /dashboards/{dashboard_id}/widgets/{widget_id}/refresh
+    Auth: Any authenticated user
+    Response: WidgetRefreshResponse { widget_id, query_result_preview?,
+              last_refreshed_at?, error? }
+    Behavior: Validates SQL, creates connector, executes query, updates widget
+
+  POST /dashboards/pin-from-chat
+    Auth: Any authenticated user
+    Body: PinFromChatRequest { message_id, dashboard_id, title? }
+    Response: 201, WidgetResponse
+    Behavior: Creates widget from chat message's generated_sql + chart_config
+
+--- ALERTS ---
+  GET /alerts/
+    Auth: Any authenticated user
+    Response: ListResponse[AlertResponse] (scoped to user's org)
+
+  POST /alerts/
+    Auth: Any authenticated user
+    Body: AlertCreate { name, description?, connection_id, query_sql,
+          condition_type, threshold_value?, check_interval_minutes? }
+    Response: 201, AlertResponse
+    Validation: SQL safety check, connection org verification
+
+  GET /alerts/{alert_id}
+    Auth: Any authenticated user
+    Response: AlertWithEvents (includes last 20 events sorted DESC)
+
+  PUT /alerts/{alert_id}
+    Auth: Any authenticated user
+    Body: AlertUpdate { name?, description?, condition_type?, threshold_value?,
+          check_interval_minutes?, is_active?, query_sql? }
+    Response: AlertResponse
+
+  DELETE /alerts/{alert_id}
+    Auth: Any authenticated user
+    Response: 204
+
+  POST /alerts/{alert_id}/toggle
+    Auth: Any authenticated user
+    Response: AlertResponse (is_active flipped)
+
+  GET /alerts/{alert_id}/events
+    Auth: Any authenticated user
+    Query params: offset (default 0), limit (1-100, default 20)
+    Response: ListResponse[AlertEventResponse]
+
+  GET /alerts/events/unread
+    Auth: Any authenticated user
+    Response: ListResponse[AlertEventResponse] (max 50, org-scoped)
+
+  POST /alerts/events/read-all
+    Auth: Any authenticated user
+    Response: { marked_read: N }
+
+  POST /alerts/events/{event_id}/read
+    Auth: Any authenticated user
+    Response: AlertEventResponse (is_read = true)
+
+--- EXPORT ---
+  POST /export/pdf
+    Auth: Any authenticated user
+    Body: ExportRequest { title, data: {columns, rows}, insight?, chart_config? }
+    Response: PDF file (application/pdf) as streaming download
+
+  POST /export/excel
+    Auth: Any authenticated user
+    Body: ExportRequest { title, data: {columns, rows}, insight?, chart_config? }
+    Response: Excel file (.xlsx) as streaming download
+
+--- UPLOAD ---
+  POST /upload/csv
+    Auth: Any authenticated user
+    Response: { message: "CSV upload placeholder" }
+
+  POST /upload/excel
+    Auth: Any authenticated user
+    Response: { message: "Excel upload placeholder" }
+
+--- AUDIT ---
+  GET /audit/
+    Auth: admin role only
+    Query params: offset, limit (1-200), action?, resource_type?
+    Response: PaginatedAuditResponse { items, total, offset, limit }
+
+--- WEBSOCKET ---
+  WS /ws?token=<JWT>
+    Auth: JWT validated on handshake
+    Messages IN: { type: "ping" | "cancel_query" }
+    Messages OUT: { type: "pong" | "alert_event" | ... }
+
+
+3.5 SERVICE LAYER
+------------------
+
+AIEngine (services/ai_engine.py):
+  The central orchestrator for the NL-to-SQL-to-insight pipeline.
+  Dependencies are injected via constructor (Protocol-based interfaces):
+  - SchemaProvider: get_schema_context(connection_id, db)
+  - QueryRunner: execute(connection_id, sql, db, ...)
+  - CacheProvider: get/set Redis cache
+  - ConversationManager: get_condensed_history()
+  - SQLSafetyValidator: validate SQL AST
+  - AsyncAnthropic client for Claude API calls
+  See Section 2.4 for the detailed pipeline description.
+
+AuthService (services/auth_service.py):
+  - register(): Creates Organization + User, checks uniqueness
+  - login(): Verifies credentials, issues JWT pair
+  - refresh(): Validates refresh token, issues new JWT pair
+
+ChatService (services/chat_service.py):
+  - get_or_create_session(): Finds existing or creates new ChatSession
+  - save_message(): Persists ChatMessage with all AI metadata
+  - get_session_messages(): Returns messages for a session
+  - get_user_sessions(): Returns all sessions for a user
+  - update_session_title(): Updates auto-generated session title
+
+ConnectionManager (services/connection_manager.py):
+  Factory that creates the correct connector based on connection type.
+  Two methods:
+  - get_connector(connection_id, org_id, db): SAFE method for API endpoints.
+    Scopes query to org_id. Uses readonly credentials.
+  - get_connector_internal(connection_id, db): For Celery tasks only.
+    No org scoping (pre-validated). Uses readonly credentials.
+  SECURITY: ALWAYS prefers readonly_username/readonly_password_encrypted
+  over admin credentials. Falls back to admin if readonly not set.
+
+QueryExecutor (services/query_executor.py):
+  - execute(): Validates SQL (unless skip_validation), creates connector,
+    runs query with timeout and row limit, returns structured result.
+
+SchemaDiscoverer (services/schema_discoverer.py):
+  - get_schema_context(): Builds text representation of schema for AI prompts.
+    Includes table descriptions, column types, PKs, FKs, sample values,
+    AI-generated business terms.
+  - discover_schema(): Introspects live database, upserts SchemaTable and
+    SchemaColumn rows. Collects sample values for each column.
+
+DashboardService (services/dashboard_service.py):
+  CRUD helpers for Dashboard and Widget entities.
+
+AlertService (services/alert_service.py):
+  CRUD helpers for Alert and AlertEvent entities.
+
+CacheService (services/cache_service.py):
+  Redis-backed cache with namespace "datamind:cache:" prefix.
+  - get(): Returns deserialized JSON or None
+  - set(): Stores serialized JSON with TTL (default 300s)
+  - delete(): Removes a cached value
+  Gracefully handles Redis unavailability (logs warning, continues).
+
+ExportService (services/export_service.py):
+  - export_pdf(): Generates PDF using reportlab with styled table,
+    title, and insight text. Table header uses brand color #6366F1.
+  - export_excel(): Generates .xlsx using openpyxl with two sheets:
+    "Summary" (title + insight) and "Data" (styled headers + rows).
+
+UploadService (services/upload_service.py):
+  - ingest_csv() / ingest_excel(): Reads file with pandas, writes to
+    a SQLite database file, returns metadata (row_count, columns, etc.).
+
+AuditService (services/audit_service.py):
+  Static method AuditService.log() creates an AuditLog entry.
+  Called from API endpoints wrapped in try/except to prevent audit
+  failures from blocking main operations.
+
+
+3.6 SECURITY LAYER
+--------------------
+
+JWT HANDLING:
+  - Algorithm: HS256
+  - Access token: signed with JWT_SECRET, expires in 60 minutes
+  - Refresh token: signed with JWT_REFRESH_SECRET, expires in 7 days
+  - Token payload: { sub: user_id, org_id, email, role, exp, type }
+  - Decoding validates signature, expiry, and token type
+
+PASSWORD HASHING:
+  - Algorithm: bcrypt via passlib
+  - hash_password(plain) -> bcrypt hash
+  - verify_password(plain, hash) -> bool
+
+ENCRYPTION (Fernet / AES):
+  - Used for: storing database connection passwords at rest
+  - Key derivation: SHA256(ENCRYPTION_KEY) -> Fernet key (base64 encoded)
+  - encrypt_value(plaintext) -> base64 ciphertext
+  - decrypt_value(ciphertext) -> plaintext
+  - ENCRYPTION_KEY must be set via environment variable (rejects "change-me")
+
+SQL VALIDATION (sqlglot):
+  - Parses SQL into AST using sqlglot.parse()
+  - Rejects non-SELECT statements
+  - Rejects multi-statement queries
+  - Walks AST to block: INSERT, UPDATE, DELETE, DROP, CREATE, ALTER,
+    Command, Transaction, Set
+  - Normalizes output to PostgreSQL dialect with pretty-printing
+
+RATE LIMITING:
+  - In-memory dict per IP address
+  - 100 requests per minute (configurable)
+  - Prunes stale entries when dict > 1000 IPs
+  - Returns 429 with Retry-After header
+  - Skips health check endpoint
+
+CORS:
+  - Configurable origins via CORS_ORIGINS env var
+  - Default: ["http://localhost:3000"]
+  - Credentials allowed
+  - All methods and headers allowed
+
+READONLY DATABASE USERS:
+  - ConnectionManager prefers readonly credentials over admin credentials
+  - Script provided: backend/scripts/setup_readonly_db_user.sql
+  - Creates user with SELECT-only permissions and 30s statement timeout
+
+STARTUP SECURITY VALIDATION:
+  - Settings._reject_insecure_defaults() runs at import time
+  - REJECTS startup if JWT_SECRET, JWT_REFRESH_SECRET, or ENCRYPTION_KEY
+    have their default insecure values
+  - Forces operators to set proper secrets before the app can start
+
+
+3.7 AI ENGINE: SQL GENERATOR, ANALYZE, RETRY LOGIC, TOKEN TRACKING
+--------------------------------------------------------------------
+
+SQL Generator (ai/sql_generator.py):
+  - Model: claude-sonnet-4-20250514
+  - Max tokens: 2000
+  - System prompt includes full schema context
+  - Conversation history included as message array
+  - Response parsing: tries <sql> tags, then ```sql fences, then generic
+    code fences with SELECT keyword. Falls back to "CANNOT_ANSWER".
+  - Token usage tracked: { input_tokens, output_tokens }
+
+AnalyzeAndVisualize (ai/analyze_and_visualize.py):
+  - Model: claude-sonnet-4-20250514
+  - Max tokens: 1500
+  - Single API call for both insight AND chart recommendation
+  - Result preview limited to 50 rows and formatted as text table
+  - Strips markdown code fences before JSON parsing
+  - Graceful fallback if JSON parsing fails (returns raw text as insight)
+  - Chart types: bar, horizontal_bar, line, area, pie, scatter, kpi, table
+
+Retry Logic (in ai_engine.py):
+  - If initial SQL execution fails, constructs a retry prompt that includes
+    the original question AND the error message
+  - Generates new SQL with error context
+  - Validates and executes the retry SQL
+  - If still fails: returns error to user with "Could you try rephrasing?"
+  - Token usage is merged across all attempts
+
+Token Tracking:
+  - Every Claude API call returns usage.input_tokens and usage.output_tokens
+  - AI engine merges tokens from SQL generation + analysis steps
+  - Stored in ChatMessage.token_usage JSONB field
+  - Can be used for cost monitoring and billing
+
+Conversation Context (ai/conversation.py):
+  - ConversationManager.get_condensed_history()
+  - Loads last 10 turns (20 messages)
+  - User messages: full content included
+  - Assistant messages: ONLY context_summary (not full response)
+  - Example: "[context_summary]: Showed top 10 products by Q4 revenue"
+  - Reduces token cost from ~15K to ~500 tokens per request
+
+Schema Enricher (ai/schema_enricher.py):
+  - Uses Claude to generate human-readable descriptions for tables and columns
+  - Maps cryptic column names to business terms (e.g., "cust_nm" -> "Customer Name")
+  - Response in JSON format with tables[].columns[].description/business_term
+
+Anomaly Detector (ai/anomaly_detector.py):
+  - Z-score based anomaly detection
+  - Requires minimum 3 historical values
+  - Default threshold: 2 standard deviations from mean
+  - Returns: z_score, direction, pct_from_mean, human-readable message
+
+
+3.8 CONNECTORS
+----------------
+
+All connectors implement BaseConnector (connectors/base.py) which defines:
+  - test_connection() -> bool
+  - get_tables() -> list[TableInfo]
+  - get_columns(table_name) -> list[ColumnInfo]
+  - execute_query(sql, timeout, max_rows) -> QueryResult
+  - get_sample_values(table, column, limit) -> list
+  - close() -> None
+
+Data classes:
+  TableInfo: { name, table_type (table|view), row_count }
+  ColumnInfo: { name, data_type, is_nullable, is_primary_key, is_foreign_key,
+                fk_references, ordinal_position }
+  QueryResult: { columns, rows, row_count, execution_time_ms, error }
+
+PostgreSQL Connector (connectors/postgres.py):
+  - Driver: asyncpg
+  - Connection pool: min_size=1, max_size=5, command_timeout=30
+  - SSL: Configurable via ssl_mode (disable|prefer|allow|require)
+  - get_tables: Queries information_schema.tables + pg_class for row counts
+  - get_columns: Queries information_schema.columns with PK/FK detection
+    via table_constraints and referential_constraints
+  - execute_query: Sets statement_timeout per query, respects max_rows
+  - Identifier quoting: Double-quote escaping for column/table names
+  - Connection lifecycle: Pool created on first use, closed via close()
+
+MySQL Connector (connectors/mysql.py):
+  - Driver: aiomysql
+  - Connection pool: minsize=1, maxsize=5
+  - get_tables: Queries information_schema.TABLES
+  - get_columns: Queries information_schema.COLUMNS with COLUMN_KEY for PK/FK
+  - execute_query: Sets MAX_EXECUTION_TIME per session, uses fetchmany(max_rows)
+  - Identifier quoting: Backtick escaping
+
+SQLite Connector (connectors/sqlite.py):
+  - Driver: aiosqlite
+  - No connection pool (single file-based connection)
+  - get_tables: Queries sqlite_master WHERE type IN ('table', 'view')
+  - get_columns: Uses PRAGMA table_info()
+  - execute_query: Uses fetchmany(max_rows)
+  - Identifier quoting: Double-quote escaping
+
+CSV Connector (connectors/csv_connector.py):
+  - Loads CSV into a temporary SQLite database using pandas
+  - Table name derived from filename (lowercase, underscores)
+  - Delegates all operations to an internal SQLiteConnector
+  - Created synchronously (via asyncio.to_thread in ConnectionManager)
+
+Excel Connector (connectors/excel_connector.py):
+  - Loads ALL sheets into a temporary SQLite database using pandas
+  - Each sheet becomes a separate table (name = sheet_name.lower().replace(' ', '_'))
+  - Delegates all operations to an internal SQLiteConnector
+
+
+3.9 TASK SYSTEM
+----------------
+
+Celery App (tasks/celery_app.py):
+  - App name: "datamind"
+  - Broker: Redis (settings.REDIS_URL)
+  - Backend: Redis (same)
+  - Serialization: JSON
+  - Beat schedule:
+    - check-alerts: every 60 seconds
+    - refresh-schemas: every 6 hours (21600 seconds)
+
+Alert Checker (tasks/alert_checker.py):
+  See Section 2.6 for detailed description.
+
+Schema Refresh (tasks/schema_refresh.py):
+  See Section 2.6 for detailed description.
+
+Report Generator (tasks/report_generator.py):
+  - Placeholder task, not yet implemented
+  - Intended for scheduled PDF/Excel report generation and email delivery
+
+
+3.10 ERROR HANDLING
+---------------------
+
+Exception hierarchy:
+  DataMindException (base, mapped to 400)
+    AuthenticationError (mapped to 401)
+    AuthorizationError (mapped to 403)
+    DataMindConnectionError (mapped to 400, alias: ConnectionError)
+    SQLValidationError (mapped to 400)
+    QueryExecutionError (mapped to 400)
+    NotFoundError (mapped to 404)
+
+Helper functions:
+  raise_not_found(resource) -> HTTPException 404
+  raise_forbidden(detail) -> HTTPException 403
+  raise_unauthorized(detail) -> HTTPException 401 with WWW-Authenticate header
+
+Response format for all errors:
+  { "detail": "<error message>" }
+
+
+================================================================================
+4. FRONTEND DEEP DIVE
+================================================================================
+
+4.1 PROJECT STRUCTURE
+----------------------
+
+frontend/
+  Dockerfile                    Multi-stage build (deps -> builder -> runner)
+  next.config.js                Next.js config (standalone output)
+  package.json                  Dependencies and scripts
+  postcss.config.js             PostCSS for Tailwind
+  tailwind.config.ts            Custom theme: colors, fonts, dark mode
+  tsconfig.json                 TypeScript configuration
+  vitest.config.ts              Test configuration
+  src/
+    app/
+      layout.tsx                Root layout (fonts, metadata, dark mode)
+      page.tsx                  Root page (redirect or landing)
+      globals.css               CSS custom properties (theme variables)
+      (auth)/
+        layout.tsx              Auth layout (centered card)
+        login/page.tsx          Login form
+        register/page.tsx       Registration form
+      (dashboard)/
+        layout.tsx              Dashboard layout (sidebar + topbar + auth guard)
+        chat/page.tsx           AI chat interface
+        connections/
+          page.tsx              Connection list
+          new/page.tsx          New connection form
+        dashboards/
+          page.tsx              Dashboard list
+          new/page.tsx          New dashboard form
+          [id]/page.tsx         Dashboard detail with widgets
+        explore/page.tsx        Data exploration
+        alerts/page.tsx         Alert management
+        settings/page.tsx       User settings
+    components/
+      layout/
+        sidebar.tsx             Navigation sidebar with nav items
+        topbar.tsx              Top bar with search, theme, notifications, user menu
+      chat/
+        chat-container.tsx      Main chat interface orchestrator
+        chat-input.tsx          Message input with send button
+        message-bubble.tsx      Message display (user/assistant)
+        session-sidebar.tsx     Chat session list
+        sql-preview.tsx         SQL code display with syntax highlighting
+        streaming-text.tsx      Animated text streaming display
+        suggested-questions.tsx  Pre-defined question suggestions
+      charts/
+        chart-renderer.tsx      Chart type router (switch on chart_type)
+        bar-chart.tsx           Bar/horizontal bar via Recharts
+        line-chart.tsx          Line chart via Recharts
+        area-chart.tsx          Area chart via Recharts
+        pie-chart.tsx           Pie chart via Recharts
+        scatter-chart.tsx       Scatter plot via Recharts
+        kpi-card.tsx            Single KPI metric card
+        data-table.tsx          Data table display
+        chart-toolbar.tsx       Chart action toolbar
+      dashboard/
+        add-widget-dialog.tsx   Widget creation dialog (saved queries or freeform SQL)
+        widget-card.tsx         Widget container for dashboard grid
+        widget-editor-dialog.tsx  Widget editing dialog
+      alerts/
+        alert-events-panel.tsx  Alert event history panel
+        create-alert-dialog.tsx  Alert creation form
+        notification-bell.tsx   Header notification bell with dropdown
+      shared/
+        confirm-dialog.tsx      Confirmation modal
+        empty-state.tsx         Empty state placeholder
+        error-boundary.tsx      React error boundary
+        file-uploader.tsx       Drag-and-drop file upload
+        loading-spinner.tsx     Loading animation
+      ui/
+        empty-state.tsx         UI primitive empty state
+        error-boundary.tsx      UI primitive error boundary
+        loading-skeleton.tsx    Loading skeleton placeholder
+      command-palette.tsx       Cmd+K command palette (cmdk)
+    hooks/
+      use-chat.ts               SWR hooks for chat sessions and history
+      use-connections.ts         SWR hook for connections list
+      use-dashboards.ts          SWR hooks + mutation functions for dashboards/widgets
+      use-schema.ts              SWR hook for schema data
+      use-theme.ts               Theme management hook
+      use-websocket.ts           WebSocket connection with auto-reconnect
+    stores/
+      chat-store.ts             Zustand: sessions, activeSessionId, messages, isLoading
+      connection-store.ts       Zustand: connections, activeConnectionId
+      ui-store.ts               Zustand: sidebarOpen, commandPaletteOpen, theme
+    types/
+      api.ts                    User, TokenResponse, ApiError interfaces
+      chart.ts                  Chart-related type definitions
+      chat.ts                   ChatMessage, ChatSession, ChartConfig, QueryResult
+      connection.ts             Connection interface
+      dashboard.ts              Dashboard, Widget, WidgetWithData, payload interfaces
+      common.ts                 ListResponse<T> generic interface
+    lib/
+      api-client.ts             Fetch wrapper with auth token injection
+      constants.ts              Chart colors palette, WS_URL
+      utils.ts                  cn() (tailwind merge), formatCurrency, formatNumber
+
+
+4.2 NEXT.JS APP ROUTER LAYOUT
+-------------------------------
+
+Route groups:
+  (auth)/      - Login and register pages (no sidebar/topbar)
+  (dashboard)/ - All authenticated pages (sidebar + topbar layout)
+
+Route structure:
+  /                -> Root page (redirect to /login or /chat)
+  /login           -> LoginPage (auth group)
+  /register        -> RegisterPage (auth group)
+  /chat            -> ChatPage (dashboard group)
+  /connections     -> ConnectionListPage
+  /connections/new -> NewConnectionPage
+  /dashboards      -> DashboardListPage
+  /dashboards/new  -> NewDashboardPage
+  /dashboards/[id] -> DashboardDetailPage (dynamic route)
+  /explore         -> ExplorePage
+  /alerts          -> AlertsPage
+  /settings        -> SettingsPage
+
+Layout hierarchy:
+  RootLayout (app/layout.tsx)
+    - Sets fonts: Inter (body), Plus Jakarta Sans (heading), JetBrains Mono (code)
+    - Sets metadata: title, description
+    - Applies dark mode class to <html>
+
+  AuthLayout (app/(auth)/layout.tsx)
+    - Centered card layout for login/register forms
+
+  DashboardLayout (app/(dashboard)/layout.tsx)
+    - Client component with auth guard (redirects to /login if no token)
+    - Renders: Sidebar | Topbar + main content area + CommandPalette
+
+
+4.3 AUTHENTICATION FLOW
+-------------------------
+
+LOGIN:
+1. User enters email/password on LoginPage
+2. Form submits POST to /api/v1/auth/login (direct fetch, no apiClient)
+3. On success: stores access_token and refresh_token in localStorage
+4. Redirects to /chat
+
+AUTH GUARD:
+1. DashboardLayout checks localStorage for access_token on mount
+2. If missing: redirects to /login
+3. If present: renders the dashboard shell
+
+API REQUESTS:
+1. apiClient() reads access_token from localStorage
+2. Sets Authorization: Bearer <token> header
+3. If response is 401:
+   - Clears access_token and refresh_token from localStorage
+   - Redirects to /login via window.location.href
+   Note: No automatic token refresh is implemented in the current version.
+
+LOGOUT:
+1. Topbar user menu -> "Sign Out"
+2. Removes access_token and refresh_token from localStorage
+3. Navigates to /login
+
+
+4.4 STATE MANAGEMENT
+----------------------
+
+Three Zustand stores provide client-side state:
+
+ChatStore (stores/chat-store.ts):
+  State:
+    sessions: ChatSession[]      - All user's chat sessions
+    activeSessionId: string|null - Currently selected session
+    messages: ChatMessage[]      - Messages in active session
+    isLoading: boolean           - Whether AI is processing
+  Actions:
+    setSessions, setActiveSession, setMessages, addMessage, setLoading
+
+ConnectionStore (stores/connection-store.ts):
+  State:
+    connections: Connection[]     - All org's connections
+    activeConnectionId: string|null - Selected connection for chat
+  Actions:
+    setConnections, setActiveConnection
+
+UIStore (stores/ui-store.ts):
+  State:
+    sidebarOpen: boolean         - Sidebar expanded/collapsed
+    commandPaletteOpen: boolean  - Cmd+K palette visibility
+    theme: 'dark' | 'light'     - Current theme
+  Actions:
+    toggleSidebar, toggleCommandPalette, setTheme
+
+SWR DATA FETCHING:
+
+SWR (stale-while-revalidate) hooks handle server data fetching:
+
+  useChatSessions():
+    Key: '/chat/sessions'
+    Returns: { sessions, isLoading, error, refresh }
+
+  useChatHistory(sessionId):
+    Key: '/chat/history/{sessionId}' (or null if no session)
+    Returns: { messages, isLoading, error, refresh }
+
+  useConnections():
+    Key: '/connections'
+    Returns: { connections, isLoading, error, refresh }
+
+  useDashboards():
+    Key: '/dashboards'
+    Returns: { dashboards, isLoading, error, refresh }
+
+  useDashboard(id):
+    Key: '/dashboards/{id}' (or null)
+    Returns: { dashboard, isLoading, error, refresh }
+
+  useSchema(connectionId):
+    Key: '/schema/{connectionId}' (or null)
+    Returns: { schema, isLoading, error, refresh }
+
+Mutation functions (in use-dashboards.ts):
+  createDashboard, updateDashboard, deleteDashboard
+  addWidget, updateWidget, deleteWidget, refreshWidget
+  Each calls apiClient, then triggers SWR revalidation via globalMutate.
+
+
+4.5 KEY COMPONENTS BREAKDOWN
+------------------------------
+
+CHAT INTERFACE:
+
+  ChatContainer (chat/chat-container.tsx):
+  - Renders SessionSidebar + message area + ChatInput
+  - handleSend():
+    1. Validates: non-empty, not loading, has activeConnectionId
+    2. Optimistically adds user message to store
+    3. Sets loading state
+    4. POST /chat/message with message, connection_id, session_id
+    5. Adds assistant response to store
+    6. On error: adds error message bubble
+  - Shows SuggestedQuestions when no messages
+
+  ChatInput (chat/chat-input.tsx):
+  - Text input with submit button
+  - Handles Enter key submission
+
+  MessageBubble (chat/message-bubble.tsx):
+  - Renders user messages (right-aligned) and assistant messages (left-aligned)
+  - For assistant messages with data: shows SQL preview, data table, chart
+
+  SessionSidebar (chat/session-sidebar.tsx):
+  - Lists chat sessions with pin/delete actions
+
+  SuggestedQuestions (chat/suggested-questions.tsx):
+  - Pre-defined question chips for quick start
+
+DASHBOARD BUILDER:
+
+  DashboardDetailPage (dashboards/[id]/page.tsx):
+  - Fetches dashboard with widgets via useDashboard(id)
+  - Renders widgets in a grid layout (react-grid-layout)
+  - "Add Widget" button opens AddWidgetDialog
+
+  AddWidgetDialog (dashboard/add-widget-dialog.tsx):
+  - Two tabs: "From Saved Queries" and "Write SQL"
+  - Saved queries tab: fetches /query/saved, searchable list
+  - Write SQL tab: connection selector + SQL textarea
+  - On select: passes SQL and connectionId to parent
+
+  WidgetCard (dashboard/widget-card.tsx):
+  - Container for individual widgets on the dashboard
+  - Renders ChartRenderer with the widget's chart_config and data
+
+  WidgetEditorDialog (dashboard/widget-editor-dialog.tsx):
+  - Edit widget properties (title, SQL, chart type, etc.)
+
+CHART RENDERING:
+
+  ChartRenderer (charts/chart-renderer.tsx):
+  - Switch statement routing to appropriate chart component
+  - Transforms query result rows into Recharts-compatible data objects
+  - Supported chart types:
+    - bar / horizontal_bar -> BarChartComponent
+    - line -> LineChartComponent
+    - area -> AreaChartComponent
+    - pie -> PieChartComponent
+    - scatter -> ScatterChartComponent
+    - kpi -> KPICard
+    - table -> DataTable
+
+CONNECTION MANAGER:
+
+  ConnectionListPage (connections/page.tsx):
+  - Lists all connections with status indicators
+  - Test connection button
+  - Delete connection (admin only)
+
+  NewConnectionPage (connections/new/page.tsx):
+  - Form for creating new database connections
+  - Dynamic fields based on connection type
+
+ALERTS SYSTEM:
+
+  AlertsPage (alerts/page.tsx):
+  - Lists all alerts with status, last checked, failure count
+  - Toggle active/inactive
+  - Create new alert
+
+  CreateAlertDialog (alerts/create-alert-dialog.tsx):
+  - Form: name, connection, SQL query, condition type, threshold
+
+  NotificationBell (alerts/notification-bell.tsx):
+  - Polls /alerts/events/unread every 30 seconds
+  - Shows badge with unread count
+  - Dropdown with event list, click marks as read
+  - "Mark all read" button
+
+LAYOUT:
+
+  Sidebar (layout/sidebar.tsx):
+  - Navigation links: Chat, Connections, Dashboards, Explore, Alerts, Settings
+  - Active state based on pathname
+  - Brand logo: "Data" + "Mind" (primary color)
+
+  Topbar (layout/topbar.tsx):
+  - Page title based on current route
+  - Command palette trigger (Cmd+K)
+  - Theme toggle (dark/light)
+  - Notification bell
+  - User dropdown menu (settings, sign out)
+
+
+4.6 API CLIENT
+----------------
+
+File: frontend/src/lib/api-client.ts
+
+The apiClient function is the single point of contact with the backend:
+
+  async function apiClient<T>(endpoint, options): Promise<T>
+
+  Behavior:
+  1. Constructs URL: NEXT_PUBLIC_API_URL + endpoint
+  2. Sets Content-Type: application/json
+  3. If skipAuth is false (default): reads access_token from localStorage,
+     sets Authorization: Bearer <token>
+  4. Makes fetch request
+  5. If 401: clears tokens from localStorage, redirects to /login
+  6. If !ok: parses error JSON, throws Error with detail message
+  7. If 204: returns undefined
+  8. Otherwise: returns parsed JSON
+
+  Configuration:
+  - API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
+
+
+4.7 WEBSOCKET
+---------------
+
+File: frontend/src/hooks/use-websocket.ts
+
+  useWebSocket(options: { onMessage?, onConnect?, onDisconnect? })
+
+  Behavior:
+  1. On mount: reads access_token from localStorage
+  2. Creates WebSocket: WS_URL + ?token=<JWT>
+  3. On open: calls onConnect callback
+  4. On message: parses JSON, calls onMessage callback
+  5. On close: calls onDisconnect, schedules reconnect after 3 seconds
+  6. On unmount: clears reconnect timer, closes WebSocket
+  7. Exposes send(data) function for outbound messages
+
+  Configuration:
+  - WS_URL: process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8000/ws'
+
+
+================================================================================
+5. INFRASTRUCTURE & DEPLOYMENT
+================================================================================
+
+5.1 DOCKER COMPOSE TOPOLOGY
+-----------------------------
+
+Services (8 total):
+
+  1. postgres (PostgreSQL 16 Alpine)
+     - Port: 5432 (internal)
+     - Volume: pgdata (persistent)
+     - Environment: POSTGRES_DB=datamind_app, POSTGRES_USER=datamind, POSTGRES_PASSWORD
+     - Healthcheck: pg_isready -U datamind (every 5s, 5 retries)
+
+  2. redis (Redis 7 Alpine)
+     - Port: 6379 (internal)
+     - Volume: redisdata (persistent)
+     - Healthcheck: redis-cli ping (every 5s, 5 retries)
+
+  3. migrate (backend image, runs once)
+     - Command: alembic upgrade head
+     - Depends on: postgres (healthy)
+     - Runs and exits (service_completed_successfully)
+
+  4. backend (FastAPI + Uvicorn)
+     - Port: 8000:8000
+     - Depends on: migrate (completed), postgres (healthy), redis (healthy)
+     - Healthcheck: HTTP GET /api/v1/health (every 10s, 5 retries)
+
+  5. frontend (Next.js standalone)
+     - Port: 3000:3000
+     - Build args: NEXT_PUBLIC_API_URL, NEXT_PUBLIC_WS_URL
+
+  6. nginx (nginx Alpine)
+     - Port: 80:80
+     - Mounts: nginx.conf read-only
+     - Depends on: backend, frontend
+     - Restart: unless-stopped
+
+  7. celery_worker (backend image)
+     - Command: celery -A app.tasks.celery_app worker -l info -c 2
+     - Depends on: postgres (healthy), redis (healthy)
+     - 2 concurrent worker processes
+
+  8. celery_beat (backend image)
+     - Command: celery -A app.tasks.celery_app beat -l info
+     - Depends on: postgres (healthy), redis (healthy)
+
+Startup order:
+  postgres + redis -> migrate -> backend, celery_worker, celery_beat -> frontend -> nginx
+
+
+5.2 NGINX REVERSE PROXY
+-------------------------
+
+File: docker/nginx.conf
+
+Upstream definitions:
+  backend  -> backend:8000
+  frontend -> frontend:3000
+
+Routing rules:
+  /api/*  -> proxy_pass http://backend
+             Sets: Host, X-Real-IP, X-Forwarded-For
+  /ws     -> proxy_pass http://backend
+             HTTP/1.1 upgrade for WebSocket
+             Sets: Upgrade, Connection "upgrade", Host
+  /*      -> proxy_pass http://frontend
+             Sets: Host
+
+This means:
+  - Browser hits http://localhost (port 80)
+  - API requests go through nginx to the backend
+  - WebSocket upgrades go through nginx to the backend
+  - All other requests (pages, assets) go to the Next.js frontend
+
+
+5.3 ENVIRONMENT VARIABLES
+---------------------------
+
+See Section 8 (CONFIGURATION REFERENCE) for the complete list.
+
+
+5.4 DATABASE SETUP
+--------------------
+
+PostgreSQL initialization:
+  1. Docker Compose creates PostgreSQL with POSTGRES_DB=datamind_app
+  2. migrate service runs alembic upgrade head
+  3. Alembic creates all tables defined in the SQLAlchemy models
+
+Manual migration workflow:
+  - Create migration: cd backend && alembic revision --autogenerate -m "description"
+  - Apply migration: cd backend && alembic upgrade head
+  - Rollback: cd backend && alembic downgrade -1
+
+Connection pooling:
+  - pool_size=20 (maintained connections)
+  - max_overflow=10 (burst capacity up to 30 total)
+  - pool_pre_ping=True (validates connections before use)
+
+
+5.5 REDIS
+-----------
+
+Redis is used for two purposes:
+  1. Celery message broker: Task queue for alert checking and schema refresh
+  2. Query result caching: CacheService stores query results with 300s TTL
+     under namespace "datamind:cache:<sha256_hash>"
+
+Redis data is semi-persistent (volume mounted) but can be safely cleared
+without data loss (cache misses will just re-execute queries, Celery tasks
+will restart on next beat cycle).
+
+
+5.6 DEPLOYMENT CHECKLIST: ZERO TO RUNNING
+-------------------------------------------
+
+Prerequisites:
+  - Docker and Docker Compose installed
+  - An Anthropic API key (for Claude AI features)
+
+Step-by-step:
+
+  1. Clone the repository:
+     git clone <repo_url>
+     cd OpenSource_Data_Virtualizer
+
+  2. Create environment file:
+     cp .env.example docker/.env
+     Edit docker/.env and set:
+       DB_PASSWORD=<strong random password>
+       JWT_SECRET=<random 256-bit key>
+       JWT_REFRESH_SECRET=<different random 256-bit key>
+       ENCRYPTION_KEY=<random 256-bit key>
+       ANTHROPIC_API_KEY=sk-ant-api03-<your-key>
+
+     Tip: Generate secrets with:
+       python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+
+  3. Start all services:
+     cd docker
+     docker compose up --build -d
+
+  4. Wait for health checks to pass:
+     docker compose ps
+     (All services should show "healthy" or "running")
+
+  5. Open the application:
+     http://localhost (via nginx)
+     or http://localhost:3000 (direct to frontend)
+
+  6. Register the first user:
+     - Go to /register
+     - Fill in: email, password, full name, org name, org slug
+     - This creates the organization and first admin user
+
+  7. Connect a database:
+     - Go to /connections
+     - Click "New Connection"
+     - Enter database details (host, port, database, username, password)
+     - Test the connection
+     - Save
+
+  8. Start chatting:
+     - Go to /chat
+     - Select the connection
+     - Ask a question about your data
+
+  9. (Optional) Set up read-only database user:
+     Run backend/scripts/setup_readonly_db_user.sql against your target
+     database to create a restricted user for DataMind query execution.
+
+
+================================================================================
+6. DATA FLOW DIAGRAMS
+================================================================================
+
+6.1 FULL USER JOURNEY: REGISTER -> CONNECT -> ASK -> GET ANSWER
+-----------------------------------------------------------------
+
+  User                    Frontend                 Backend                  External
+  |                       |                        |                        |
+  |--Register form------->|                        |                        |
+  |                       |--POST /auth/register-->|                        |
+  |                       |                        |--Create Organization-->|
+  |                       |                        |--Create User (admin)-->|
+  |                       |                        |--Create AuditLog------>|
+  |                       |<--201 UserResponse-----|                        |
+  |<--Redirect to login---|                        |                        |
+  |                       |                        |                        |
+  |--Login form---------->|                        |                        |
+  |                       |--POST /auth/login----->|                        |
+  |                       |                        |--Verify bcrypt-------->|
+  |                       |                        |--Create JWT pair------>|
+  |                       |<--200 TokenResponse----|                        |
+  |                       |--Store in localStorage |                        |
+  |<--Redirect to /chat---|                        |                        |
+  |                       |                        |                        |
+  |--Navigate to          |                        |                        |
+  |  /connections-------->|                        |                        |
+  |                       |--GET /connections----->|                        |
+  |                       |<--200 ListResponse-----|                        |
+  |                       |                        |                        |
+  |--Fill connection form-|                        |                        |
+  |                       |--POST /connections---->|                        |
+  |                       |                        |--Encrypt password----->|
+  |                       |                        |--Store Connection----->|
+  |                       |<--201 ConnectionResp---|                        |
+  |                       |                        |                        |
+  |--Click "Test"-------->|                        |                        |
+  |                       |--POST /connections/    |                        |
+  |                       |  {id}/test------------>|                        |
+  |                       |                        |--Create connector----->|
+  |                       |                        |--Decrypt password----->|
+  |                       |                        |--test_connection()---->|Customer DB
+  |                       |                        |<--true/false-----------|
+  |                       |<--ConnectionTestResult-|                        |
+  |<--"Connection OK!"----|                        |                        |
+  |                       |                        |                        |
+  |--Navigate to /chat--->|                        |                        |
+  |--Type question------->|                        |                        |
+  |                       |--POST /chat/message--->|                        |
+  |                       |                        |                        |
+  |                       |                        |[AI PIPELINE START]     |
+  |                       |                        |--Get schema context--->|
+  |                       |                        |--Get conversation----->|
+  |                       |                        |--Claude: NL->SQL------>|Anthropic API
+  |                       |                        |<--SQL + reasoning------|
+  |                       |                        |--Validate SQL (AST)-->|
+  |                       |                        |--Check Redis cache---->|Redis
+  |                       |                        |--Execute SQL---------->|Customer DB
+  |                       |                        |<--Query results--------|
+  |                       |                        |--Cache results-------->|Redis
+  |                       |                        |--Claude: Analyze------>|Anthropic API
+  |                       |                        |<--Insight + chart------|
+  |                       |                        |[AI PIPELINE END]       |
+  |                       |                        |                        |
+  |                       |                        |--Save messages-------->|PostgreSQL
+  |                       |<--200 ChatResponse-----|                        |
+  |<--Show insight+chart--|                        |                        |
+
+
+6.2 DASHBOARD CREATION AND WIDGET DATA FLOW
+----------------------------------------------
+
+  User                    Frontend                Backend                   Customer DB
+  |                       |                       |                         |
+  |--Click "New Dashboard"|                       |                         |
+  |                       |--POST /dashboards---->|                         |
+  |                       |<--201 Dashboard-------|                         |
+  |                       |                       |                         |
+  |--Click "Add Widget"-->|                       |                         |
+  |                       |--Open AddWidgetDialog |                         |
+  |                       |--GET /query/saved---->|                         |
+  |                       |<--Saved queries-------|                         |
+  |                       |                       |                         |
+  |--Select query or      |                       |                         |
+  |  write SQL----------->|                       |                         |
+  |                       |--POST /dashboards/    |                         |
+  |                       |  {id}/widgets-------->|                         |
+  |                       |                       |--Validate SQL (AST)---->|
+  |                       |                       |--Verify connection org->|
+  |                       |<--201 WidgetResponse--|                         |
+  |                       |                       |                         |
+  |--View dashboard------>|                       |                         |
+  |                       |--POST /dashboards/    |                         |
+  |                       |  {id}/widgets/        |                         |
+  |                       |  {wid}/refresh------->|                         |
+  |                       |                       |--Create connector------>|
+  |                       |                       |--Execute widget SQL---->|Customer DB
+  |                       |                       |<--Query results---------|
+  |                       |                       |--Update widget state--->|
+  |                       |<--WidgetRefreshResp---|                         |
+  |<--Render chart--------|                       |                         |
+
+
+6.3 ALERT LIFECYCLE
+---------------------
+
+  User/Celery             Backend                   Customer DB    Redis
+  |                       |                         |              |
+  |--POST /alerts-------->|                         |              |
+  |                       |--Validate SQL (AST)---->|              |
+  |                       |--Verify connection org->|              |
+  |                       |--Create Alert---------->|PostgreSQL    |
+  |<--201 AlertResponse---|                         |              |
+  |                       |                         |              |
+  === Every 60 seconds (Celery Beat) ===            |              |
+  |                       |                         |              |
+  |  Celery Beat          |                         |              |
+  |--check_alerts task--->|                         |              |
+  |                       |--SELECT * FROM alerts-->|PostgreSQL    |
+  |                       |  WHERE is_active=true   |              |
+  |                       |                         |              |
+  |                       |For each alert:          |              |
+  |                       |--Validate SQL---------->|              |
+  |                       |--Create connector------>|              |
+  |                       |--Execute alert SQL----->|Customer DB   |
+  |                       |<--Result (1 row)--------|              |
+  |                       |--Extract numeric value->|              |
+  |                       |--Evaluate condition:--->|              |
+  |                       |  value > threshold?     |              |
+  |                       |                         |              |
+  |                       |If triggered:            |              |
+  |                       |--Create AlertEvent----->|PostgreSQL    |
+  |                       |--Update alert state---->|PostgreSQL    |
+  |                       |                         |              |
+  === Browser polls every 30 seconds ===            |              |
+  |                       |                         |              |
+  | NotificationBell      |                         |              |
+  |--GET /alerts/events/  |                         |              |
+  |  unread--------------->|                        |              |
+  |                       |--Query AlertEvent------>|PostgreSQL    |
+  |                       |  WHERE is_read=false    |              |
+  |<--Unread events-------|                         |              |
+  |--Show badge count---->|                         |              |
+
+
+6.4 SCHEMA DISCOVERY FLOW
+----------------------------
+
+  Celery Beat             Backend                   Customer DB    PostgreSQL
+  |                       |                         |              |
+  |--refresh_all_schemas->|                         |              |
+  |                       |                         |              |
+  |                       |--SELECT connections---->|              |PostgreSQL
+  |                       |  WHERE is_active=true   |              |
+  |                       |                         |              |
+  |                       |For each connection:     |              |
+  |                       |--Get existing schema--->|              |PostgreSQL
+  |                       |--Create connector------>|              |
+  |                       |--get_tables()---------->|Customer DB   |
+  |                       |<--Table list------------|              |
+  |                       |                         |              |
+  |                       |--Diff: new/removed----->|              |
+  |                       |--Delete removed tables->|              |PostgreSQL
+  |                       |                         |              |
+  |                       |For each table:          |              |
+  |                       |--get_columns()--------->|Customer DB   |
+  |                       |<--Column list-----------|              |
+  |                       |--get_sample_values()--->|Customer DB   |
+  |                       |<--Sample values---------|              |
+  |                       |                         |              |
+  |                       |--Upsert SchemaTable---->|              |PostgreSQL
+  |                       |--Upsert SchemaColumn--->|              |PostgreSQL
+  |                       |--Update last_synced_at->|              |PostgreSQL
+  |                       |                         |              |
+  |                       |--Log summary:           |              |
+  |                       |  "5 tables, 2 new,      |              |
+  |                       |   0 removed"            |              |
+
+
+================================================================================
+7. API REFERENCE
+================================================================================
+
+Note: All endpoints are prefixed with /api/v1.
+Auth column: N = no auth, A = any authenticated user, R(role) = specific role.
+
+7.1 AUTH ENDPOINTS
+-------------------
+
+  POST /auth/register
+    Auth: N
+    Request: {
+      email: string (EmailStr),
+      password: string (8-128 chars),
+      full_name: string (max 255),
+      org_name: string (max 255),
+      org_slug: string (max 100, pattern: ^[a-z0-9-]+$)
+    }
+    Response 201: {
+      id: uuid, email: string, full_name: string,
+      role: string, org_id: uuid, is_active: boolean
+    }
+    Errors: 400 (slug taken, email exists)
+
+  POST /auth/login
+    Auth: N
+    Request: { email: string (EmailStr), password: string (min 1) }
+    Response 200: {
+      access_token: string, refresh_token: string,
+      token_type: "bearer",
+      user: { id, email, full_name, role, org_id, is_active }
+    }
+    Errors: 401 (invalid credentials, account deactivated)
+
+  POST /auth/refresh
+    Auth: N
+    Query param: refresh_token=<string>
+    Response 200: TokenResponse (same as login)
+    Errors: 401 (invalid/expired refresh token)
+
+
+7.2 CONNECTION ENDPOINTS
+-------------------------
+
+  GET /connections/
+    Auth: A
+    Response 200: { data: ConnectionResponse[], count: int }
+
+  POST /connections/
+    Auth: R(admin, analyst)
+    Request: {
+      name: string, type: "postgresql"|"mysql"|"sqlite"|"csv"|"excel",
+      host?: string, port?: int, database_name?: string,
+      username?: string, password?: string, ssl_mode?: string,
+      file_path?: string
+    }
+    Response 201: ConnectionResponse
+
+  GET /connections/{connection_id}
+    Auth: A
+    Response 200: ConnectionResponse
+    Errors: 404
+
+  DELETE /connections/{connection_id}
+    Auth: R(admin)
+    Response 204
+    Errors: 404
+
+  POST /connections/{connection_id}/test
+    Auth: A
+    Response 200: { success: bool, message: string, tables_found?: int }
+
+
+7.3 SCHEMA ENDPOINTS
+---------------------
+
+  GET /schema/{connection_id}
+    Auth: A
+    Response 200: { tables: [] }
+
+  POST /schema/{connection_id}/refresh
+    Auth: A
+    Response 200: { status: "refreshing" }
+
+
+7.4 CHAT ENDPOINTS
+-------------------
+
+  POST /chat/message
+    Auth: A
+    Request: {
+      message: string (1-5000), connection_id: uuid, session_id?: uuid
+    }
+    Response 200: {
+      content: string, session_id: uuid, message_id: uuid,
+      generated_sql?: string, chart_config?: object,
+      query_result_preview?: object, ...
+    }
+
+  GET /chat/history/{session_id}
+    Auth: A (owner only)
+    Response 200: { data: ChatMessageResponse[], count: int }
+
+  GET /chat/sessions
+    Auth: A
+    Response 200: { data: ChatSessionResponse[], count: int }
+
+  DELETE /chat/sessions/{session_id}
+    Auth: A (owner only)
+    Response 204
+
+  PATCH /chat/sessions/{session_id}
+    Auth: A (owner only)
+    Request: { title?: string, is_pinned?: bool }
+    Response 200: ChatSessionResponse
+
+
+7.5 QUERY ENDPOINTS
+--------------------
+
+  POST /query/execute
+    Auth: A
+    Response 200: { results: [] }
+
+  GET /query/saved
+    Auth: A
+    Response 200: { data: [...], count: int }
+
+
+7.6 DASHBOARD ENDPOINTS
+-------------------------
+
+  GET /dashboards/
+    Auth: A
+    Response 200: { data: DashboardResponse[], count: int }
+
+  POST /dashboards/
+    Auth: A
+    Request: { title: string, description?: string }
+    Response 201: DashboardResponse
+
+  GET /dashboards/{dashboard_id}
+    Auth: A
+    Response 200: DashboardWithWidgets (includes widgets array)
+
+  PUT /dashboards/{dashboard_id}
+    Auth: A
+    Request: { title?, description?, is_shared?, layout_config? }
+    Response 200: DashboardResponse
+
+  DELETE /dashboards/{dashboard_id}
+    Auth: A
+    Response 204
+
+  POST /dashboards/{dashboard_id}/widgets
+    Auth: A
+    Request: {
+      title: string, widget_type: string, query_sql: string,
+      connection_id: uuid, chart_config?: object,
+      refresh_interval_seconds?: int
+    }
+    Response 201: WidgetResponse
+
+  PUT /dashboards/{dashboard_id}/widgets/{widget_id}
+    Auth: A
+    Request: { title?, widget_type?, chart_config?, position?,
+              refresh_interval_seconds?, query_sql? }
+    Response 200: WidgetResponse
+
+  DELETE /dashboards/{dashboard_id}/widgets/{widget_id}
+    Auth: A
+    Response 204
+
+  POST /dashboards/{dashboard_id}/widgets/{widget_id}/refresh
+    Auth: A
+    Response 200: { widget_id, query_result_preview?, last_refreshed_at?, error? }
+
+  POST /dashboards/pin-from-chat
+    Auth: A
+    Request: { message_id: uuid, dashboard_id: uuid, title?: string }
+    Response 201: WidgetResponse
+
+
+7.7 ALERT ENDPOINTS
+--------------------
+
+  GET /alerts/
+    Auth: A
+    Response 200: { data: AlertResponse[], count: int }
+
+  POST /alerts/
+    Auth: A
+    Request: {
+      name: string, description?: string, connection_id: uuid,
+      query_sql: string, condition_type: "above"|"below"|"change_pct"|"anomaly",
+      threshold_value?: decimal, check_interval_minutes?: int (1-1440)
+    }
+    Response 201: AlertResponse
+
+  GET /alerts/{alert_id}
+    Auth: A
+    Response 200: AlertWithEvents (includes events array, max 20)
+
+  PUT /alerts/{alert_id}
+    Auth: A
+    Request: { name?, description?, condition_type?, threshold_value?,
+              check_interval_minutes?, is_active?, query_sql? }
+    Response 200: AlertResponse
+
+  DELETE /alerts/{alert_id}
+    Auth: A
+    Response 204
+
+  POST /alerts/{alert_id}/toggle
+    Auth: A
+    Response 200: AlertResponse (is_active flipped)
+
+  GET /alerts/{alert_id}/events
+    Auth: A
+    Query: offset, limit (1-100)
+    Response 200: { data: AlertEventResponse[], count: int }
+
+  GET /alerts/events/unread
+    Auth: A
+    Response 200: { data: AlertEventResponse[], count: int }
+
+  POST /alerts/events/read-all
+    Auth: A
+    Response 200: { marked_read: int }
+
+  POST /alerts/events/{event_id}/read
+    Auth: A
+    Response 200: AlertEventResponse
+
+
+7.8 EXPORT ENDPOINTS
+---------------------
+
+  POST /export/pdf
+    Auth: A
+    Request: {
+      title: string, data: { columns: string[], rows: any[][] },
+      insight?: string, chart_config?: object
+    }
+    Response 200: application/pdf (streaming download)
+
+  POST /export/excel
+    Auth: A
+    Request: (same as PDF)
+    Response 200: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+
+
+7.9 UPLOAD ENDPOINTS
+---------------------
+
+  POST /upload/csv
+    Auth: A
+    Response 200: { message: "CSV upload placeholder" }
+
+  POST /upload/excel
+    Auth: A
+    Response 200: { message: "Excel upload placeholder" }
+
+
+7.10 AUDIT ENDPOINTS
+---------------------
+
+  GET /audit/
+    Auth: R(admin)
+    Query: offset, limit (1-200), action?, resource_type?
+    Response 200: {
+      items: AuditLogResponse[], total: int, offset: int, limit: int
+    }
+
+
+7.11 WEBSOCKET
+----------------
+
+  WS /ws?token=<JWT>
+    Auth: JWT in query parameter
+    Inbound messages: { type: "ping" | "cancel_query" }
+    Outbound messages: { type: "pong" | ... }
+    Close codes: 4001 (authentication failed)
+
+
+================================================================================
+8. CONFIGURATION REFERENCE
+================================================================================
+
+8.1 BACKEND ENVIRONMENT VARIABLES (Settings class)
+----------------------------------------------------
+
+Variable                           Type        Default                  Required  Description
+---------------------------------  ----------  -----------------------  --------  -----------
+DATABASE_URL                       string      postgresql+asyncpg://... No        PostgreSQL connection string (asyncpg driver)
+REDIS_URL                          string      redis://localhost:6379/0 No        Redis connection URL for Celery broker + caching
+ANTHROPIC_API_KEY                  string      ""                       YES       Anthropic API key for Claude AI (sk-ant-...)
+JWT_SECRET                         string      (none safe)              YES       Secret key for signing access JWTs. MUST be changed.
+JWT_REFRESH_SECRET                 string      (none safe)              YES       Secret key for signing refresh JWTs. MUST be different from JWT_SECRET.
+JWT_ALGORITHM                      string      "HS256"                  No        JWT signing algorithm
+JWT_ACCESS_TOKEN_EXPIRE_MINUTES    int         60                       No        Access token lifetime in minutes
+JWT_REFRESH_TOKEN_EXPIRE_DAYS      int         7                        No        Refresh token lifetime in days
+ENCRYPTION_KEY                     string      (none safe)              YES       Key for Fernet AES encryption of stored passwords. MUST be changed.
+CORS_ORIGINS                       list[str]   ["http://localhost:3000"] No       Allowed CORS origins (JSON array)
+DEBUG                              bool        false                    No        Enable SQL query logging and debug mode
+
+SECURITY NOTE: The application WILL NOT START if JWT_SECRET, JWT_REFRESH_SECRET,
+or ENCRYPTION_KEY are left at their insecure default values. The Settings
+validator enforces this at import time.
+
+
+8.2 FRONTEND ENVIRONMENT VARIABLES
+------------------------------------
+
+Variable                 Type    Default                       Required  Description
+-----------------------  ------  ----------------------------  --------  -----------
+NEXT_PUBLIC_API_URL      string  http://localhost:8000/api/v1  No        Backend API base URL (baked into build)
+NEXT_PUBLIC_WS_URL       string  ws://localhost:8000/ws        No        WebSocket URL (baked into build)
+
+These are build-time variables (NEXT_PUBLIC_ prefix). They are embedded into
+the JavaScript bundle at build time and cannot be changed at runtime.
+
+For Docker deployment, set them as build args in docker-compose.yml:
+  args:
+    - NEXT_PUBLIC_API_URL=/api/v1     (relative, goes through nginx)
+    - NEXT_PUBLIC_WS_URL=/ws          (relative, goes through nginx)
+
+
+8.3 DOCKER COMPOSE ENVIRONMENT VARIABLES
+------------------------------------------
+
+Variable              Used by                 Description
+--------------------  ----------------------  -----------
+DB_PASSWORD           postgres, backend, etc  PostgreSQL password
+ANTHROPIC_API_KEY     backend, celery_worker  Anthropic Claude API key
+JWT_SECRET            backend, celery          JWT access token signing key
+JWT_REFRESH_SECRET    backend, celery          JWT refresh token signing key
+ENCRYPTION_KEY        backend, celery          Fernet encryption key
+NEXT_PUBLIC_API_URL   frontend (build arg)     API URL for frontend build
+NEXT_PUBLIC_WS_URL    frontend (build arg)     WebSocket URL for frontend build
+
+
+8.4 NGINX CONFIGURATION
+-------------------------
+
+File: docker/nginx.conf
+
+  Listen: port 80
+  Upstream backend: backend:8000
+  Upstream frontend: frontend:3000
+
+  Routes:
+    /api/*  -> backend (with real IP forwarding)
+    /ws     -> backend (WebSocket upgrade)
+    /*      -> frontend
+
+
+8.5 CELERY BEAT SCHEDULE
+--------------------------
+
+Task Name                                    Interval      Description
+-------------------------------------------  -----------   -----------
+app.tasks.alert_checker.check_alerts         60 seconds    Check all active alerts
+app.tasks.schema_refresh.refresh_all_schemas 6 hours       Refresh schema metadata
+
+
+================================================================================
+9. WHAT'S NEEDED FOR PRODUCTION AT A REAL COMPANY
+================================================================================
+
+9.1 INFRASTRUCTURE REQUIREMENTS
+---------------------------------
+
+Recommended cloud provider services:
+  - Compute: AWS ECS Fargate / GCP Cloud Run / Azure Container Instances
+  - Database: AWS RDS PostgreSQL / GCP Cloud SQL / Azure Database for PostgreSQL
+  - Cache: AWS ElastiCache Redis / GCP Memorystore / Azure Cache for Redis
+  - Load balancer: AWS ALB / GCP Cloud Load Balancing / Azure Application Gateway
+  - Container registry: ECR / GCR / ACR for Docker images
+  - Secrets manager: AWS Secrets Manager / GCP Secret Manager / Azure Key Vault
+  - CDN: CloudFront / Cloud CDN for static frontend assets
+  - DNS: Route53 / Cloud DNS with custom domain
+
+Minimum specs for production:
+  - Backend: 2 vCPU, 4 GB RAM (scale horizontally)
+  - Frontend: 1 vCPU, 2 GB RAM (static after build, can use CDN)
+  - PostgreSQL: 2 vCPU, 8 GB RAM, 100 GB SSD (managed, multi-AZ)
+  - Redis: 1 vCPU, 2 GB RAM (managed)
+  - Celery worker: 2 vCPU, 4 GB RAM (per worker)
+  - Celery beat: 1 vCPU, 1 GB RAM (single instance only!)
+
+
+9.2 SECURITY CHECKLIST
+------------------------
+
+MUST DO before production:
+
+  [ ] SSL/TLS:
+      - Terminate TLS at load balancer or nginx
+      - Use Let's Encrypt or ACM certificates
+      - Redirect all HTTP to HTTPS
+      - Set HSTS headers
+
+  [ ] Secrets management:
+      - Store JWT_SECRET, JWT_REFRESH_SECRET, ENCRYPTION_KEY, ANTHROPIC_API_KEY,
+        DB_PASSWORD in a secrets manager (not .env files)
+      - Rotate secrets on a schedule (quarterly minimum)
+      - Never commit secrets to git
+
+  [ ] Key rotation plan:
+      - JWT_SECRET rotation: Issue new tokens with new key, keep old key
+        valid during transition window
+      - ENCRYPTION_KEY rotation: Re-encrypt all connection passwords with
+        new key during maintenance window
+      - ANTHROPIC_API_KEY: Rotate via Anthropic dashboard
+
+  [ ] WAF (Web Application Firewall):
+      - Deploy WAF in front of the load balancer
+      - Block SQL injection patterns in URL parameters
+      - Rate limit by IP at WAF level (more robust than in-memory)
+      - Block known bad user agents
+
+  [ ] Network policies:
+      - Backend, Celery, PostgreSQL, Redis in private subnet
+      - Only nginx/load balancer in public subnet
+      - PostgreSQL accepts connections only from backend/celery security groups
+      - Redis accepts connections only from backend/celery security groups
+      - Customer database connections go through VPN or private networking
+
+  [ ] Database security:
+      - ALWAYS use read-only database users for query execution
+      - Set statement_timeout (30s max) on the read-only user
+      - Use SSL for all database connections
+      - Enable audit logging on the PostgreSQL instance
+
+  [ ] Application security:
+      - Move rate limiting to Redis (production-grade, distributed)
+      - Add CSRF protection for cookie-based sessions (if added)
+      - Implement token refresh in frontend (currently redirects to login)
+      - Add request body size limits in nginx
+      - Sanitize file uploads (validate file types, scan for malware)
+
+  [ ] Container security:
+      - Run containers as non-root (already done in Dockerfiles)
+      - Use minimal base images (already using slim/alpine)
+      - Scan images for vulnerabilities (Trivy, Snyk)
+      - Pin base image digests
+
+
+9.3 MONITORING SETUP
+---------------------
+
+What to monitor:
+
+  Application metrics:
+  - Request rate, latency (p50, p95, p99), error rate per endpoint
+  - WebSocket connection count and errors
+  - AI pipeline latency (SQL generation, query execution, analysis)
+  - Token usage per request (cost tracking)
+  - Active user count per organization
+
+  Infrastructure metrics:
+  - CPU, memory, disk utilization per container
+  - PostgreSQL connections, query latency, replication lag
+  - Redis memory usage, eviction rate, connection count
+  - Celery queue depth, task success/failure rate
+
+  Business metrics:
+  - Questions asked per day/user
+  - SQL generation success rate vs CANNOT_ANSWER rate
+  - Alert trigger frequency
+  - Dashboard widget refresh success rate
+
+  Alerting thresholds (suggested):
+  - Error rate > 5%: warning
+  - Error rate > 10%: critical
+  - P95 latency > 5s: warning
+  - P95 latency > 15s: critical
+  - PostgreSQL connections > 80% of max: warning
+  - Redis memory > 80%: warning
+  - Celery queue depth > 100: warning
+  - AI pipeline failures > 3 consecutive: critical
+
+  Recommended tools:
+  - Metrics: Prometheus + Grafana
+  - Logging: ELK stack or Datadog
+  - Tracing: OpenTelemetry + Jaeger
+  - Uptime: Pingdom, UptimeRobot, or AWS Route53 health checks
+
+
+9.4 BACKUP STRATEGY
+---------------------
+
+PostgreSQL:
+  - Automated daily snapshots via managed database service
+  - Point-in-time recovery enabled (PITR) with WAL archiving
+  - Retention: 30 days for automated backups, weekly manual snapshots kept 90 days
+  - Test restore quarterly
+
+Redis:
+  - Semi-persistent data only (cache + task queue)
+  - RDB snapshots every 15 minutes (if using managed Redis)
+  - No critical data loss on Redis failure (cache rebuilds automatically)
+
+File uploads:
+  - Store in S3/GCS/Azure Blob Storage (not local filesystem)
+  - Enable versioning on the bucket
+  - Cross-region replication for disaster recovery
+
+
+9.5 SCALING STRATEGY
+----------------------
+
+Bottleneck identification (in order of likelihood):
+
+  1. Anthropic API rate limits:
+     - Each chat message makes 2 Claude API calls (SQL + analysis)
+     - Mitigation: Implement request queuing, client-side debouncing,
+       result caching (already done), upgrade API tier
+
+  2. Customer database query latency:
+     - Slow queries on customer databases block the request
+     - Mitigation: statement_timeout (30s), query result caching (5 min TTL),
+       encourage read replicas, optimize generated SQL
+
+  3. Backend API:
+     - FastAPI is async and handles concurrent requests well
+     - Scale: Add more replicas behind load balancer
+     - Trigger: CPU > 70% sustained
+
+  4. PostgreSQL (app database):
+     - Connection pool exhaustion at high concurrency
+     - Scale: Increase pool_size, add read replicas for read-heavy queries,
+       PgBouncer for connection pooling
+     - Trigger: Connection count > 80% of max
+
+  5. Celery workers:
+     - Alert checking scales linearly with number of active alerts
+     - Scale: Add more workers
+     - Trigger: Queue depth > 50 for > 5 minutes
+
+  6. Redis:
+     - Cache size grows with unique queries
+     - Scale: Increase memory, enable eviction policy (allkeys-lru)
+     - Trigger: Memory > 80%
+
+Horizontal scaling architecture:
+  - Backend: Stateless, scale to N replicas
+  - Frontend: Static build, serve from CDN
+  - Celery workers: Scale to N replicas
+  - Celery beat: MUST BE SINGLE INSTANCE (scheduler, not worker)
+  - PostgreSQL: Vertical scaling + read replicas
+  - Redis: Vertical scaling or Redis Cluster for extreme scale
+
+
+9.6 COMPLIANCE CONSIDERATIONS
+-------------------------------
+
+SOC 2:
+  - Audit logging is implemented (all CRUD operations logged)
+  - Role-based access control (admin, analyst, viewer)
+  - Encryption at rest (Fernet for connection passwords)
+  - Need to add: encryption in transit (TLS), access reviews, change management
+
+GDPR:
+  - User data is scoped to organizations (data isolation)
+  - Need to add: user data export endpoint, user deletion endpoint (right to
+    be forgotten), data processing agreements, cookie consent
+  - ChatMessage content may contain PII from query results -- consider
+    retention policies and purging
+
+Data residency:
+  - Deploy in the region required by customers
+  - PostgreSQL and Redis must be in the same region
+  - Anthropic API calls go to US -- verify if this is acceptable for
+    EU data residency requirements. Consider using Anthropic's EU endpoint.
+
+PCI DSS (if handling payment data):
+  - DataMind connects to customer databases that may contain payment data
+  - Read-only access mitigates risk but does not eliminate it
+  - Result caching in Redis means payment data could be cached
+  - Need: network segmentation, encryption, access logging, PCI audit
+
+
+9.7 TEAM ROLES NEEDED
+-----------------------
+
+Minimum team for production:
+  1. Full-stack engineer (1-2): Feature development, bug fixes
+  2. Platform/DevOps engineer (1): Infrastructure, CI/CD, monitoring
+  3. AI/ML engineer (0.5-1): Prompt optimization, model upgrades, fine-tuning
+  4. Product manager (0.5-1): Roadmap, customer feedback
+
+Ownership areas:
+  - Backend API + services: Full-stack engineers
+  - AI pipeline + prompts: AI engineer
+  - Frontend: Full-stack engineers
+  - Infrastructure + deployment: Platform engineer
+  - Security + compliance: Platform engineer + security consultant
+  - Customer database integrations: Full-stack + platform engineers
+
+
+9.8 ESTIMATED CLOUD COSTS
+---------------------------
+
+Small scale (1 org, <10 users, <50 queries/day):
+  - Compute (ECS Fargate): ~$80/month (backend + frontend + celery)
+  - RDS PostgreSQL (db.t3.small): ~$30/month
+  - ElastiCache Redis (cache.t3.micro): ~$15/month
+  - Anthropic API: ~$20/month (at ~50 queries/day, ~$0.01/query)
+  - Load balancer: ~$20/month
+  - TOTAL: ~$165/month
+
+Medium scale (5 orgs, ~100 users, ~500 queries/day):
+  - Compute: ~$300/month (3 backend replicas, 2 celery workers)
+  - RDS PostgreSQL (db.r6g.large): ~$180/month
+  - ElastiCache Redis (cache.r6g.large): ~$100/month
+  - Anthropic API: ~$150/month
+  - Load balancer + CDN: ~$50/month
+  - TOTAL: ~$780/month
+
+Large scale (50 orgs, ~1000 users, ~5000 queries/day):
+  - Compute: ~$1,200/month (auto-scaling, 5-10 replicas)
+  - RDS PostgreSQL (db.r6g.xlarge, multi-AZ): ~$500/month
+  - ElastiCache Redis (cluster): ~$300/month
+  - Anthropic API: ~$1,500/month
+  - Load balancer + CDN + WAF: ~$200/month
+  - TOTAL: ~$3,700/month
+
+
+9.9 ONBOARDING GUIDE FOR NEW DEVELOPERS
+-----------------------------------------
+
+Day 1: Environment setup
+  1. Clone the repository
+  2. Install Docker Desktop
+  3. Copy .env.example to docker/.env, fill in secrets
+  4. Run: make dev (docker compose up --build)
+  5. Register at http://localhost/register
+  6. Explore the UI: connect a database, ask questions, create dashboards
+
+Day 1-2: Codebase orientation
+  1. Read this document (you're doing it!)
+  2. Read backend/app/main.py (app factory)
+  3. Read backend/app/services/ai_engine.py (the "brain")
+  4. Read backend/app/ai/prompts.py (the most critical text in the codebase)
+  5. Read backend/app/core/sql_validator.py (security)
+  6. Read frontend/src/lib/api-client.ts (how frontend talks to backend)
+  7. Read frontend/src/components/chat/chat-container.tsx (main UI)
+
+Day 3-5: First tasks (suggested)
+  - Run the test suite: make test
+  - Add a unit test for a service method
+  - Modify a prompt and observe the effect
+  - Add a new field to an existing model + migration
+  - Create a new API endpoint following existing patterns
+
+Key patterns to understand:
+  - FastAPI dependency injection (get_db, get_current_user, require_role)
+  - SQLAlchemy 2.0 mapped_column style
+  - Pydantic v2 model_validate / model_dump
+  - SWR data fetching pattern in frontend
+  - Zustand store pattern in frontend
+  - How org_id scoping works in every query (multi-tenancy)
+
+
+================================================================================
+10. GLOSSARY
+================================================================================
+
+Term                 Definition
+-------------------  ----------------------------------------------------------
+AI Engine            The central orchestrator (AIEngine class) that converts
+                     natural language questions into SQL, executes queries,
+                     and generates business insights via Claude.
+
+Alembic              Database migration tool for SQLAlchemy. Manages schema
+                     changes through versioned migration scripts.
+
+Alert                A saved SQL query + threshold condition that is
+                     periodically evaluated. When the condition is met
+                     (e.g., value > threshold), an AlertEvent is created.
+
+AlertEvent           A triggered instance of an Alert, containing the
+                     triggering value and a human-readable message.
+
+Anomaly Detection    Statistical method (z-score) for detecting unusual
+                     values relative to historical data. Used in alerts.
+
+asyncpg              Async PostgreSQL driver for Python. Used by the
+                     PostgreSQL connector for high-performance queries.
+
+BaseConnector        Abstract interface that all database connectors must
+                     implement: test, get_tables, get_columns, execute, close.
+
+Celery               Distributed task queue for Python. Runs background jobs
+                     like alert checking and schema refresh.
+
+Celery Beat          Celery's periodic task scheduler. Sends tasks at
+                     configured intervals (e.g., every 60 seconds).
+
+ChatMessage          An individual message in a chat conversation. Contains
+                     the text content plus AI metadata (SQL, results, chart).
+
+ChatSession          A conversation thread between a user and the AI,
+                     associated with a specific database connection.
+
+ChartConfig          JSON configuration specifying chart type, column
+                     mappings, title, and display options for visualization.
+
+Claude               Anthropic's large language model. Used for NL-to-SQL
+                     translation and data analysis/visualization.
+
+Connection           A saved database connection configuration (host, port,
+                     credentials, type) belonging to an organization.
+
+CORS                 Cross-Origin Resource Sharing. HTTP headers that allow
+                     the frontend (port 3000) to call the backend (port 8000).
+
+Dashboard            A collection of widgets arranged in a grid layout,
+                     displaying data visualizations and KPIs.
+
+Fernet               Symmetric encryption scheme from the cryptography
+                     library (AES-128-CBC). Used to encrypt database
+                     passwords at rest.
+
+JWT                  JSON Web Token. A signed, base64-encoded token used
+                     for stateless authentication.
+
+KPI                  Key Performance Indicator. A single numeric metric
+                     displayed prominently (e.g., "Total Revenue: EUR 4.8M").
+
+Multi-tenancy        Architecture where a single application instance
+                     serves multiple organizations with data isolation.
+
+NL-to-SQL            Natural Language to SQL. The AI process of converting
+                     a plain English question into a SQL query.
+
+Organization         The top-level tenant entity. All users, connections,
+                     dashboards, and alerts belong to an organization.
+
+org_id               The foreign key used throughout the system to scope
+                     data to a specific organization (tenant isolation).
+
+Pin-from-Chat        Feature allowing users to save a chat-generated query
+                     and chart as a dashboard widget.
+
+QueryResult          Data class containing: columns (names), rows (data),
+                     row_count, execution_time_ms, and optional error.
+
+Recharts             React charting library used for rendering bar, line,
+                     area, pie, scatter charts in the frontend.
+
+SavedQuery           A bookmarked SQL query that can be reused in widgets
+                     or the SQL explorer.
+
+SchemaColumn         Metadata about a database column: name, type, keys,
+                     sample values, AI-generated descriptions.
+
+SchemaTable          Metadata about a database table: name, type, row count,
+                     AI-generated description.
+
+sqlglot              Python SQL parser that builds an AST from SQL strings.
+                     Used for security validation (block non-SELECT queries).
+
+SQL Validator        Component that parses SQL into an AST and rejects
+                     unsafe operations (INSERT, UPDATE, DELETE, DROP, etc.).
+
+SWR                  Stale-While-Revalidate. React data fetching library
+                     that caches responses and revalidates in background.
+
+Token Usage          Tracking of Claude API input/output tokens per request
+                     for cost monitoring and billing.
+
+Widget               A dashboard component that displays data. Types:
+                     chart, table, kpi, text. Each has associated SQL.
+
+Zustand              Lightweight React state management library. Stores
+                     client-side state for chat, connections, and UI.
+
+z-score              Statistical measure of how many standard deviations
+                     a value is from the mean. Used for anomaly detection.
+
+WebSocket            Full-duplex communication protocol. Used for real-time
+                     notifications and (future) streaming AI responses.
+
+
+================================================================================
+END OF DOCUMENT
+================================================================================

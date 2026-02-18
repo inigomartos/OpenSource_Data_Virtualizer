@@ -1,0 +1,415 @@
+================================================================================
+DATAMIND -- CLAUDE CODE PROMPTING STRATEGY & SESSION MANAGEMENT GUIDE
+================================================================================
+Written: 2026-02-18
+Purpose: Survive context resets. Never lose progress. Ship improvements fast.
+================================================================================
+
+
+================================================================================
+1. README ARCHITECTURE -- CONTEXT FILES (ALL CREATED)
+================================================================================
+
+All context files have been created and are live. Claude Code auto-loads
+CLAUDE.md every session. You manually reference STATUS.md at session start.
+
+FILE                          PURPOSE                         WHEN CLAUDE READS IT
+--------------------------    ----------------------------    --------------------
+CLAUDE.md (root)              Auto-loaded project context     Every session (AUTO)
+STATUS.md (root)              Living tracker: done/next       Every session (MANUAL)
+README.md (root)              Project overview for humans      On demand
+backend/README.md             Backend arch + annotated tree   Backend work only
+frontend/README.md            Frontend arch + known issues    Frontend work only
+docker/README.md              Infra topology + ASCII diagram  Infra work only
+improvement-analysis.txt      30 ranked improvements          When planning work
+product-documentation.txt     Full architecture deep-dive     When understanding a subsystem
+prompting-strategy.txt        This file — session workflows   When starting a new work batch
+
+MAINTENANCE RULES:
+  - Update STATUS.md at the END of every session (non-negotiable)
+  - Update CLAUDE.md when architecture changes (new patterns, new services)
+  - Update layer READMEs when directory structure changes
+  - Keep CLAUDE.md under 200 lines (it's auto-loaded, bloat wastes tokens)
+
+
+================================================================================
+2. MULTI-PROMPT STRATEGY -- SURVIVING CONTEXT RESETS
+================================================================================
+
+2.1 SESSION START PROTOCOL
+---------------------------
+Every new Claude Code session, paste this as your FIRST message:
+
+  ---SESSION START TEMPLATE---
+  Read STATUS.md to see current progress. My goal this session:
+  [SPECIFIC GOAL, e.g., "Complete Batch A: critical bug fixes"]
+
+  The fixes I want to tackle:
+  - Fix #[N]: [description] in [filename]
+  - Fix #[N]: [description] in [filename]
+  ---END TEMPLATE---
+
+WHY THIS WORKS: CLAUDE.md is auto-loaded (gives project structure + patterns).
+STATUS.md gives current state. Explicit fix IDs prevent scope creep.
+
+NOTE: You do NOT need to tell Claude to read CLAUDE.md — it's automatic.
+Just reference STATUS.md and be specific about what you want done.
+
+2.2 HOW TO REFERENCE EXISTING DOCS
+------------------------------------
+- Reference fixes by their # from improvement-analysis.txt:
+  "Fix #1: JWT refresh token bug in backend/app/services/auth_service.py —
+  change decode_jwt() to decode_refresh_jwt()"
+
+- For architecture questions, point to specific sections:
+  "See product-documentation.txt Section 2 for the request lifecycle"
+  "See backend/README.md for the directory structure"
+
+- NEVER say "fix the auth bug" without specifying WHICH bug and WHERE.
+
+2.3 SCOPING WORK INTO INDEPENDENT CHUNKS
+------------------------------------------
+Each session should produce a COMPLETE, COMMITTABLE unit of work. Rules:
+
+  1. One session = one logical change (or a batch of tiny related changes)
+  2. If a fix touches only backend/ files, don't also start frontend/ changes
+  3. If a fix touches only one file, finish it, test it, commit it
+  4. If a fix spans 3+ files, list all files UPFRONT so Claude doesn't forget
+  5. Never start a change you can't finish in the remaining context window
+
+BAD:  "Improve the security of the whole app"
+GOOD: "Fix Section 2.3 (JWT refresh bug) in auth_service.py and add a unit
+       test in tests/unit/test_auth_service.py. Then fix Section 2.5 (alert
+       checker org_id bug) in tasks/alert_checker.py."
+
+2.4 CHECKPOINT STRATEGY -- WHEN TO COMMIT AND PUSH
+----------------------------------------------------
+COMMIT after each of these:
+  - A single bug fix is done and tested
+  - A batch of related small fixes (e.g., all 1-line security fixes)
+  - A new test file is complete
+  - A config change (nginx, docker-compose) is done
+
+PUSH at the end of every session, no exceptions.
+
+COMMIT MESSAGE FORMAT:
+  fix(backend): resolve JWT refresh token validation bug [Fix 2.3]
+  feat(backend): add database indexes for hot query paths [Fix 7.4]
+  chore(infra): add security headers to nginx.conf [Fix 2.7]
+
+The [Fix X.X] tag lets you trace commits back to improvement-analysis.txt.
+
+2.5 SESSION HANDOFF -- END-OF-SESSION PROTOCOL
+------------------------------------------------
+Before context runs out, tell Claude:
+
+  "Stop working. Do these three things:
+   1. Commit all changes with a descriptive message
+   2. Update STATUS.md with what was done and what's next
+   3. Push to remote"
+
+If you're running low on context and can't do all three, at minimum:
+  - git add and commit (so changes aren't lost)
+  - Manually update STATUS.md yourself if Claude can't
+
+
+================================================================================
+3. WORK CHUNKING STRATEGY -- BREAKING DOWN THE 30 IMPROVEMENTS
+================================================================================
+
+3.1 RECOMMENDED CHUNK SIZE
+----------------------------
+One Claude Code session can reliably handle:
+  - 3-5 small fixes (1-line to 10-line changes) OR
+  - 1-2 medium fixes (20-50 line changes across 2-3 files) OR
+  - 1 large fix (new feature, new file, or architectural change)
+
+BUDGET RULE: If you estimate more than ~100 lines of changes across more than
+4 files, split it into two sessions. Context gets eaten fast when Claude reads
+multiple large files.
+
+3.2 GROUPING STRATEGY -- WHAT GOES TOGETHER
+---------------------------------------------
+
+SESSION BATCH A: "Critical Bug Fixes" (~30 min session)
+  - Fix #1: JWT refresh token — decode_jwt() → decode_refresh_jwt() in auth_service.py
+  - Fix #2: Alert checker — fix get_connector() args in tasks/alert_checker.py
+  - Fix #3: Wire AIEngine to REST /chat/message in api/v1/chat.py
+  Files touched: 3. These are THE most impactful changes in the entire backlog.
+
+SESSION BATCH B: "Security Hardening" (~30 min session)
+  - Fix #4: Add SSL/TLS to nginx (certs, HTTPS redirect, HSTS)
+  - Fix #5: Move rate limiter to Redis (replace in-memory dict in core/middleware.py)
+  - Fix #6: Add security headers to nginx.conf (CSP, X-Frame, X-Content-Type)
+  Files touched: 2-3 (docker/nginx.conf, core/middleware.py, config.py)
+
+SESSION BATCH C: "Data Layer" (~30 min session)
+  - Fix #7: Add database indexes for hot query paths (models/*.py)
+  - Fix #8: Add pagination to all list endpoints (api/v1/*.py, schemas/common.py)
+  - Fix #9: Proper health check — verify DB + Redis (api/v1/health.py)
+  Files touched: 6-8. Use 2 parallel agents: one for models, one for endpoints.
+
+SESSION BATCH D: "Auth Hardening" (~45 min session)
+  - Fix #10: Token revocation via Redis blacklist (core/security.py, auth_service.py)
+  - Fix #11: Move JWT from localStorage to HttpOnly cookies (backend + frontend)
+  - Fix #20: Add user context to frontend sidebar (stores, sidebar component)
+  Files touched: 5-7. Backend + frontend cross-cutting — do sequentially.
+
+SESSION BATCH E: "Backend Quality" (~45 min session)
+  - Fix #12: Fix N+1 query in SchemaDiscoverer (selectinload)
+  - Fix #13: Structured JSON logging (replace loguru text with JSON)
+  - Fix #14: Integration tests for CRUD endpoints (new test files)
+  Files touched: 4-6. Testing has no prod code risk.
+
+SESSION BATCH F: "AI Streaming + Features" (~1 hr session, LARGE)
+  - Fix #16: AI streaming responses via WebSocket (backend + frontend)
+  - Fix #17: Per-org token budgeting (new model/service/middleware)
+  Files touched: 8+. This is the biggest batch. Consider splitting.
+
+SESSION BATCH G: "DevOps + Observability" (~30 min session)
+  - Fix #18: SAST + dependency scanning in CI (.github/workflows/ci.yml)
+  - Fix #19: Sentry error tracking (SDK install + config)
+  - Fix #15: WebSocket across replicas via Redis PubSub (if time permits)
+  Files touched: 3-5. CI changes are low-risk.
+
+SESSION BATCH H: "Frontend Polish" (~30 min session)
+  - Add ErrorBoundary wrappers on critical paths (chat, dashboard, charts)
+  - Add loading skeletons for data-heavy pages
+  - Automatic token refresh (intercept 401, use refresh token, retry)
+  Files touched: 5-8 (various frontend components + api-client.ts)
+
+SESSION BATCH I: "Testing Sprint 1" (~45 min session)
+  - Unit tests: security module (JWT, bcrypt, Fernet), SQL validator, AI parsers
+  Files touched: 2-3 new test files. Zero prod code changes.
+
+SESSION BATCH J: "Testing Sprint 2" (~45 min session)
+  - Integration tests: full auth flow, connection CRUD, chat flow, dashboard lifecycle
+  Files touched: 2-3 new test files + conftest.py fixtures.
+
+SESSION BATCH K: "Alembic + Migrations" (~30 min session)
+  - Generate Alembic migration files from current models (versions/ is empty)
+  - Verify migration up/down cycle works
+  Files touched: alembic/versions/*.py (new files). Critical for prod deploys.
+
+SESSION BATCH L: "Enterprise Prep" (~multiple sessions)
+  - Fixes #21-30: Prometheus metrics, circuit breakers, OpenTelemetry, K8s manifests,
+    connection pool caching, granular RBAC, SSO/SAML, Storybook
+  These are individually large and should be split into sub-sessions.
+
+3.3 PRIORITY ORDERING (matches improvement-analysis.txt ranking)
+------------------------------------------------------------------
+ORDER  SESSION BATCH   FIX IDs FROM ANALYSIS   ESTIMATED TIME
+  1    Batch A         Fixes #1, #2, #3         30 min
+  2    Batch B         Fixes #4, #5, #6         30 min
+  3    Batch C         Fixes #7, #8, #9         30 min
+  4    Batch D         Fixes #10, #11, #20      45 min
+  5    Batch E         Fixes #12, #13, #14      45 min
+  6    Batch F         Fixes #15, #16, #17      60 min
+  7    Batch G         Fixes #18, #19           30 min
+  8    Batch H         Frontend polish          30 min
+  9    Batch I         Testing (unit)           45 min
+ 10    Batch J         Testing (integration)    45 min
+ 11    Batch K         Alembic migrations       30 min
+ 12    Batch L         Enterprise (multi)       3-6 hrs
+                                            ============
+                            TOP 20: ~12 sessions (~7 hours)
+                            FULL 30: ~18 sessions (~13 hours)
+
+3.4 USING PARALLEL AGENTS WITHIN A SESSION
+---------------------------------------------
+Claude Code can dispatch parallel sub-agents. Use them when:
+  - Fixes in a batch touch COMPLETELY DIFFERENT FILES (no overlap)
+  - Example: Agent 1 fixes auth_service.py, Agent 2 fixes alert_checker.py
+
+DO NOT use parallel agents when:
+  - Two fixes touch the same file (merge conflicts)
+  - One fix depends on another fix being done first
+  - Changes need coordinated testing
+
+PARALLEL AGENT PROMPT (paste this when dispatching):
+  "Run these two fixes in parallel using separate agents:
+   Agent 1: Fix Section 2.3 -- change decode_jwt() to decode_refresh_jwt()
+            in backend/app/services/auth_service.py line 86.
+   Agent 2: Fix Section 2.5 -- add org_id argument to get_connector() call
+            in backend/app/tasks/alert_checker.py line 40.
+   Both agents: Do NOT modify any file the other agent is touching."
+
+
+================================================================================
+4. PROMPT TEMPLATES -- COPY-PASTE READY
+================================================================================
+
+---------- TEMPLATE 1: NEW SESSION, CONTINUE WORK ----------
+
+Read STATUS.md to see current progress and what's next.
+
+This session I want to complete Batch [LETTER]: [BATCH NAME].
+The specific fixes are:
+- Fix #[N]: [description] in [filename]
+- Fix #[N]: [description] in [filename]
+
+For each fix: read the file, make the change, verify no breakage.
+After all fixes: commit, update STATUS.md, push.
+
+---------- TEMPLATE 2: DEPLOY AGENTS FOR BATCH OF FIXES ----------
+
+I need you to fix these issues. They touch SEPARATE files and can be done
+independently. Use parallel agents if possible.
+
+Fix 1: [Section X.X from improvement-analysis.txt]
+  File: [exact path]
+  What to change: [exact description]
+  How to verify: [what to check]
+
+Fix 2: [Section X.X from improvement-analysis.txt]
+  File: [exact path]
+  What to change: [exact description]
+  How to verify: [what to check]
+
+Fix 3: [Section X.X from improvement-analysis.txt]
+  File: [exact path]
+  What to change: [exact description]
+  How to verify: [what to check]
+
+After all fixes are applied, commit each group with a descriptive message
+that includes the [Fix X.X] tag. Then update STATUS.md.
+
+---------- TEMPLATE 3: RUN QA/VERIFICATION ----------
+
+I just completed a batch of fixes. Before I commit, verify the changes:
+
+1. Read the git diff to see all changes made this session
+2. For each changed file, check that:
+   - The change matches the intent described in improvement-analysis.txt
+   - No unintended side effects were introduced
+   - Import statements are correct
+   - No syntax errors
+3. If backend files changed: describe what tests should be run
+4. If frontend files changed: check that TypeScript types are consistent
+5. If docker/nginx files changed: check syntax validity
+6. Report any issues found
+
+---------- TEMPLATE 4: COMMIT AND DOCUMENT PROGRESS ----------
+
+Session is ending. Do these steps in order:
+
+1. Run git status and git diff to show all changes
+2. Stage and commit changes with appropriate messages using the format:
+   type(scope): description [Fix X.X]
+3. Update STATUS.md:
+   - Move completed fixes to the "Completed Fixes" table
+   - Update "In Progress" if anything is half-done
+   - Update "Next Up" to reflect the new priority
+   - Add an entry to the "Session Log" table with today's date
+4. Commit the STATUS.md update: "docs: update STATUS.md with session progress"
+5. Push all commits to remote
+
+---------- TEMPLATE 5: EMERGENCY -- LOST ALL CONTEXT, REBUILD ----------
+
+I lost all context from my previous session. Help me rebuild understanding.
+
+1. You already have CLAUDE.md (auto-loaded)
+2. Read STATUS.md for what's been done and what's next
+3. Run: git log --oneline -10
+4. Summarize: what's completed, what's next, any blockers
+
+Do NOT make any changes. Just report so I can decide what to work on.
+
+
+================================================================================
+5. ANTI-PATTERNS -- WHAT NOT TO DO
+================================================================================
+
+5.1 DO NOT start massive multi-file changes without checkpointing
+    WHY: If context runs out mid-change, you have a broken codebase with no
+    commit. Always commit working intermediate states. A half-done fix that
+    compiles is better than a complete fix that was lost.
+
+5.2 DO NOT let parallel agents modify overlapping files
+    WHY: One agent's changes will overwrite the other's. If two fixes touch
+    the same file, do them sequentially in one agent.
+
+5.3 DO NOT skip the STATUS.md update at end of session
+    WHY: This is the ONLY persistent memory between sessions. If you don't
+    update it, the next session starts from zero. Treat STATUS.md as your
+    save file.
+
+5.4 DO NOT assume Claude remembers anything from previous sessions
+    WHY: Context is completely reset. Every session is a blank slate. The
+    README files and STATUS.md are your external memory. If it's not written
+    down in a file, it doesn't exist.
+
+5.5 DO NOT give vague prompts
+    BAD:  "Fix the security issues"
+    BAD:  "Improve the backend"
+    BAD:  "Work on the next items"
+    GOOD: "Fix Section 2.3 (JWT refresh bug) in backend/app/services/
+           auth_service.py line 86. Change decode_jwt() to decode_refresh_jwt()."
+    WHY: Vague prompts cause Claude to read too many files, waste context on
+    exploration, and produce unfocused changes.
+
+5.6 DO NOT read product-documentation.txt in full every session
+    WHY: It's 700+ lines and will eat 30% of your context window. Only
+    reference specific sections when needed. Use CLAUDE.md for the compressed
+    overview instead.
+
+5.7 DO NOT start a new batch before the previous batch is committed and pushed
+    WHY: Uncommitted changes + new changes = confusion and potential loss. The
+    checkpoint strategy exists for a reason. Commit, push, THEN start next batch.
+
+5.8 DO NOT mix backend and frontend changes in the same session (usually)
+    WHY: They have different test strategies, different file structures, and
+    different risk profiles. The exception is when a fix explicitly requires
+    coordinated changes (e.g., moving JWT to HttpOnly cookies needs both).
+
+5.9 DO NOT create large files from scratch without a plan
+    WHY: If Claude runs out of context while generating a 200-line test file,
+    you get a truncated file. Instead, ask Claude to create a skeleton first,
+    commit it, then fill in test cases in a follow-up prompt.
+
+5.10 DO NOT forget to reference the fix ID
+    WHY: Without the fix ID tag in commit messages, you lose traceability.
+    Three months from now, you won't remember what "fix auth bug" referred to.
+    "[Fix 2.3]" links directly to the analysis document.
+
+
+================================================================================
+6. QUICK REFERENCE CARD
+================================================================================
+
+SESSION START:
+  1. CLAUDE.md is auto-loaded (you don't need to do anything)
+  2. Paste: "Read STATUS.md. Goal: [Batch X]. Fixes: #N, #N, #N"
+
+DURING SESSION:
+  3. One batch at a time. Specific files. Specific fix IDs.
+  4. Commit after each logical unit.
+  5. Use parallel agents ONLY for non-overlapping files.
+
+SESSION END:
+  6. Commit all changes
+  7. Update STATUS.md (move fixes to Completed, update Next Up, add Session Log entry)
+  8. Push to remote
+
+FILES THAT EXIST (all created):
+  CLAUDE.md                  -> Auto-loaded every session (~120 lines)
+  STATUS.md                  -> Living progress tracker (read manually each session)
+  improvement-analysis.txt   -> 30 ranked improvements (reference by Fix #N)
+  product-documentation.txt  -> Full architecture docs (reference specific sections)
+  prompting-strategy.txt     -> This file (session workflows + templates)
+  backend/README.md          -> Backend directory tree + patterns + known issues
+  frontend/README.md         -> Frontend components + state management + known issues
+  docker/README.md           -> Infrastructure topology + startup order + gaps
+
+COMMIT FORMAT:
+  type(scope): description [Fix #N]
+  Types: fix, feat, chore, test, docs, refactor
+  Scopes: backend, frontend, infra, ci, docs
+
+ESTIMATED TOTAL EFFORT:
+  Top 20 fixes: ~12 sessions, ~7 hours
+  All 30 fixes: ~18 sessions, ~13 hours
+
+================================================================================
+END OF STRATEGY GUIDE
+================================================================================
