@@ -26,24 +26,34 @@ class SQLGenerator:
 
         messages = [*conversation_history, {"role": "user", "content": user_message}]
 
-        response = await self.client.messages.create(
+        full_text = ""
+        input_tokens = 0
+        output_tokens = 0
+
+        async with self.client.messages.stream(
             model=self.model,
             max_tokens=2000,
             system=system_prompt,
             messages=messages,
-        )
+        ) as stream:
+            async for text in stream.text_stream:
+                full_text += text
+                if on_stream:
+                    await on_stream({"phase": "generating_sql", "chunk": text})
+            final_message = await stream.get_final_message()
+            input_tokens = final_message.usage.input_tokens
+            output_tokens = final_message.usage.output_tokens
 
-        response_text = response.content[0].text
-        sql = self._extract_sql(response_text)
-        reasoning = self._extract_reasoning(response_text)
+        sql = self._extract_sql(full_text)
+        reasoning = self._extract_reasoning(full_text)
 
         return {
             "sql": sql,
             "reasoning": reasoning,
-            "raw_response": response_text,
+            "raw_response": full_text,
             "token_usage": {
-                "input_tokens": response.usage.input_tokens,
-                "output_tokens": response.usage.output_tokens,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
             },
         }
 

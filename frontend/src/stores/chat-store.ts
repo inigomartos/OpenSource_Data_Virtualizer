@@ -6,12 +6,16 @@ interface ChatState {
   activeSessionId: string | null;
   messages: ChatMessage[];
   isLoading: boolean;
+  streamingContent: string;
+  streamingPhase: string;
 
   setSessions: (sessions: ChatSession[]) => void;
   setActiveSession: (id: string | null) => void;
   setMessages: (messages: ChatMessage[]) => void;
   addMessage: (message: ChatMessage) => void;
   setLoading: (loading: boolean) => void;
+  appendStreamChunk: (chunk: string, phase: string) => void;
+  clearStreaming: () => void;
 }
 
 export const useChatStore = create<ChatState>((set) => ({
@@ -19,6 +23,8 @@ export const useChatStore = create<ChatState>((set) => ({
   activeSessionId: null,
   messages: [],
   isLoading: false,
+  streamingContent: '',
+  streamingPhase: '',
 
   setSessions: (sessions) => set({ sessions }),
   setActiveSession: (id) => set({ activeSessionId: id }),
@@ -26,4 +32,10 @@ export const useChatStore = create<ChatState>((set) => ({
   addMessage: (message) =>
     set((state) => ({ messages: [...state.messages, message] })),
   setLoading: (loading) => set({ isLoading: loading }),
+  appendStreamChunk: (chunk, phase) =>
+    set((state) => ({
+      streamingContent: state.streamingContent + chunk,
+      streamingPhase: phase,
+    })),
+  clearStreaming: () => set({ streamingContent: '', streamingPhase: '' }),
 }));

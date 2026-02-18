@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { WS_URL } from '@/lib/constants';
 
 interface UseWebSocketOptions {
@@ -11,15 +11,15 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<NodeJS.Timeout>();
   const optionsRef = useRef(options);
+  const [isConnected, setIsConnected] = useState(false);
   optionsRef.current = options;
 
   const connect = useCallback(() => {
-    const token = localStorage.getItem('access_token');
-    if (!token) return;
-
-    const ws = new WebSocket(`${WS_URL}?token=${token}`);
+    // Connect without token — backend reads HttpOnly cookie for auth
+    const ws = new WebSocket(WS_URL);
 
     ws.onopen = () => {
+      setIsConnected(true);
       optionsRef.current.onConnect?.();
     };
 
@@ -33,6 +33,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
     };
 
     ws.onclose = () => {
+      setIsConnected(false);
       optionsRef.current.onDisconnect?.();
       reconnectTimer.current = setTimeout(connect, 3000);
     };
@@ -54,5 +55,5 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
     }
   }, []);
 
-  return { send };
+  return { send, isConnected };
 }
