@@ -63,17 +63,26 @@ async def mark_all_events_read(
 
 @router.get("/", response_model=ListResponse[AlertResponse])
 async def list_alerts(
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     """List all alerts for the user's organization."""
+    count_result = await db.execute(
+        select(func.count()).select_from(Alert).where(Alert.org_id == user.org_id)
+    )
+    total = count_result.scalar_one()
+
     result = await db.execute(
         select(Alert)
         .where(Alert.org_id == user.org_id)
         .order_by(Alert.created_at.desc())
+        .offset(skip)
+        .limit(limit)
     )
     alerts = result.scalars().all()
-    return {"data": alerts, "count": len(alerts)}
+    return {"data": alerts, "count": total}
 
 
 @router.post("/", status_code=201, response_model=AlertResponse)

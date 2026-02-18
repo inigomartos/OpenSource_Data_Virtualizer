@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from sqlalchemy import String, Boolean, Integer, Text, ForeignKey, DateTime, Numeric
+from sqlalchemy import String, Boolean, Integer, Text, ForeignKey, DateTime, Numeric, Index
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -12,6 +12,9 @@ from app.models.base import BaseModel
 
 class Alert(BaseModel):
     __tablename__ = "alerts"
+    __table_args__ = (
+        Index("ix_alerts_org_active", "org_id", "is_active"),
+    )
 
     org_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False

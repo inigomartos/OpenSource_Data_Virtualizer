@@ -9,8 +9,8 @@ All queries are scoped to the current user (``user.id``) for security.
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -169,37 +169,55 @@ async def send_message(
 )
 async def get_history(
     session_id: uuid.UUID,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Return all messages for a chat session, ordered chronologically."""
+    """Return messages for a chat session, ordered chronologically."""
     # Verify session belongs to caller
     await _get_session_or_404(session_id, user.id, db)
+
+    count_result = await db.execute(
+        select(func.count()).select_from(ChatMessage).where(ChatMessage.session_id == session_id)
+    )
+    total = count_result.scalar_one()
 
     result = await db.execute(
         select(ChatMessage)
         .where(ChatMessage.session_id == session_id)
         .order_by(ChatMessage.created_at.asc())
+        .offset(skip)
+        .limit(limit)
     )
     messages = result.scalars().all()
-    return {"data": messages, "count": len(messages)}
+    return {"data": messages, "count": total}
 
 
 # ── Session Endpoints ────────────────────────────────────────────────────────
 
 @router.get("/sessions", response_model=ListResponse[ChatSessionResponse])
 async def list_sessions(
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     """List all chat sessions owned by the current user."""
+    count_result = await db.execute(
+        select(func.count()).select_from(ChatSession).where(ChatSession.user_id == user.id)
+    )
+    total = count_result.scalar_one()
+
     result = await db.execute(
         select(ChatSession)
         .where(ChatSession.user_id == user.id)
         .order_by(ChatSession.updated_at.desc())
+        .offset(skip)
+        .limit(limit)
     )
     sessions = result.scalars().all()
-    return {"data": sessions, "count": len(sessions)}
+    return {"data": sessions, "count": total}
 
 
 @router.delete("/sessions/{session_id}", status_code=204)

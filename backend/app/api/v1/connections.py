@@ -8,8 +8,8 @@ in API responses.
 
 import uuid
 
-from fastapi import APIRouter, Depends
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
 
@@ -56,17 +56,26 @@ async def _get_connection_or_404(
 
 @router.get("/", response_model=ListResponse[ConnectionResponse])
 async def list_connections(
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     """List all connections belonging to the caller's organization."""
+    count_result = await db.execute(
+        select(func.count()).select_from(Connection).where(Connection.org_id == user.org_id)
+    )
+    total = count_result.scalar_one()
+
     result = await db.execute(
         select(Connection)
         .where(Connection.org_id == user.org_id)
         .order_by(Connection.created_at.desc())
+        .offset(skip)
+        .limit(limit)
     )
     connections = result.scalars().all()
-    return {"data": connections, "count": len(connections)}
+    return {"data": connections, "count": total}
 
 
 @router.post("/", response_model=ConnectionResponse, status_code=201)
