@@ -27,6 +27,7 @@ import {
 import WidgetCard from '@/components/dashboard/widget-card';
 import WidgetEditorDialog from '@/components/dashboard/widget-editor-dialog';
 import AddWidgetDialog from '@/components/dashboard/add-widget-dialog';
+import { ErrorBoundary } from '@/components/ui/error-boundary';
 import type {
   WidgetWithData,
   CreateWidgetPayload,
@@ -343,23 +344,26 @@ export default function DashboardDetailPage() {
 
       {/* KPI Row */}
       {kpiWidgets.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-6">
-          {kpiWidgets.map((kpi) => (
-            <div key={kpi.id} className="h-[120px]">
-              <WidgetCard
-                widget={kpi}
-                onRefresh={handleRefreshWidget}
-                onEdit={handleEditWidget}
-                onDelete={handleDeleteWidget}
-                isEditing={isEditing}
-              />
-            </div>
-          ))}
-        </div>
+        <ErrorBoundary>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-6">
+            {kpiWidgets.map((kpi) => (
+              <div key={kpi.id} className="h-[120px]">
+                <WidgetCard
+                  widget={kpi}
+                  onRefresh={handleRefreshWidget}
+                  onEdit={handleEditWidget}
+                  onDelete={handleDeleteWidget}
+                  isEditing={isEditing}
+                />
+              </div>
+            ))}
+          </div>
+        </ErrorBoundary>
       )}
 
       {/* Grid Widgets */}
       {gridWidgets.length > 0 ? (
+        <ErrorBoundary>
         <ResponsiveGridLayout
           className="layout"
           layouts={layouts}
@@ -385,6 +389,7 @@ export default function DashboardDetailPage() {
             </div>
           ))}
         </ResponsiveGridLayout>
+        </ErrorBoundary>
       ) : kpiWidgets.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20">
           <div className="w-16 h-16 rounded-2xl bg-brand-primary/10 flex items-center justify-center mb-4">

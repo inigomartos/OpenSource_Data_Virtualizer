@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import ChartRenderer from '@/components/charts/chart-renderer';
+import { ErrorBoundary } from '@/components/ui/error-boundary';
 import type { WidgetWithData } from '@/types/dashboard';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -161,14 +162,29 @@ export default function WidgetCard({
         {/* Chart content */}
         {!hasError && hasData && (
           <div className="h-full w-full">
-            <ChartRenderer
-              config={widget.chart_config}
-              data={{
-                columns: widget.query_result_preview!.columns,
-                rows: widget.query_result_preview!.rows,
-                row_count: widget.query_result_preview!.row_count,
-              }}
-            />
+            <ErrorBoundary
+              fallback={
+                <div className="flex flex-col items-center justify-center h-full p-4 text-center">
+                  <AlertCircle className="w-6 h-6 text-brand-danger mb-2" />
+                  <p className="text-xs text-text-muted">Chart render error</p>
+                  <button
+                    onClick={handleRefresh}
+                    className="mt-2 text-xs text-brand-primary hover:text-brand-primary/80 transition-colors"
+                  >
+                    Retry
+                  </button>
+                </div>
+              }
+            >
+              <ChartRenderer
+                config={widget.chart_config}
+                data={{
+                  columns: widget.query_result_preview!.columns,
+                  rows: widget.query_result_preview!.rows,
+                  row_count: widget.query_result_preview!.row_count,
+                }}
+              />
+            </ErrorBoundary>
           </div>
         )}
 

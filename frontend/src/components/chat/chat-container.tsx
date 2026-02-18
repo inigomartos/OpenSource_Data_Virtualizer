@@ -10,6 +10,7 @@ import MessageBubble from './message-bubble';
 import SessionSidebar from './session-sidebar';
 import SuggestedQuestions from './suggested-questions';
 import StreamingText from './streaming-text';
+import { ErrorBoundary } from '@/components/ui/error-boundary';
 
 export default function ChatContainer() {
   const {
@@ -134,6 +135,7 @@ export default function ChatContainer() {
     <div className="h-full flex">
       <SessionSidebar />
       <div className="flex-1 flex flex-col">
+        <ErrorBoundary>
         <div className="flex-1 overflow-auto p-4 space-y-4">
           {messages.length === 0 && !isLoading && (
             <div className="flex flex-col items-center justify-center h-full text-center">
@@ -171,6 +173,7 @@ export default function ChatContainer() {
             </div>
           )}
         </div>
+        </ErrorBoundary>
 
         <ChatInput />
       </div>
