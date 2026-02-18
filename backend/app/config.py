@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     # Rate Limiting
     RATE_LIMIT_ENABLED: bool = True
 
+    # Sentry
+    SENTRY_DSN: str = ""
+
     # App
     DEBUG: bool = False
 

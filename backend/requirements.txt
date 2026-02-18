@@ -24,6 +24,7 @@ python-dotenv==1.0.1
 loguru==0.7.2
 tenacity==9.0.0
 cryptography==43.0.1
+sentry-sdk[fastapi]==2.14.0
 
 # Dev
 pytest==8.3.3

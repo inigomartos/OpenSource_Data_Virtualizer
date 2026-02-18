@@ -29,6 +29,7 @@ services:
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
       - CORS_ORIGINS=["http://localhost:3000","http://localhost","http://localhost:80","https://localhost","https://localhost:443"]
+      - SENTRY_DSN=${SENTRY_DSN:-}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -49,6 +50,7 @@ services:
       args:
         - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-/api/v1}
         - NEXT_PUBLIC_WS_URL=${NEXT_PUBLIC_WS_URL:-/ws}
+        - NEXT_PUBLIC_SENTRY_DSN=${NEXT_PUBLIC_SENTRY_DSN:-}
     ports:
       - "3000:3000"
 
