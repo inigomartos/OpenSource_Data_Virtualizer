@@ -1,7 +1,7 @@
 # DataMind — Project Status
 
 > **Last updated:** 2026-02-18
-> **Last commit:** c8854ac feat(frontend): user context sidebar [Fix #20]
+> **Last commit:** df983b7 test(backend): integration tests [Fix #14]
 
 ## Completed Work
 
@@ -18,6 +18,7 @@
 | **Batch B** | **Fix #4** (SSL/TLS nginx), **Fix #5** (Redis rate limiting), **Fix #6** (security headers) | 2026-02-18 | 5f59892, e020457 |
 | **Batch C** | **Fix #7** (DB indexes), **Fix #8** (pagination), **Fix #9** (health check) | 2026-02-18 | d41cbb1 |
 | **Batch D** | **Fix #10** (token revocation), **Fix #11** (HttpOnly cookies), **Fix #20** (user context) | 2026-02-18 | 2b74c04, 855fc31, c8854ac |
+| **Batch E** | **Fix #12** (N+1 query), **Fix #13** (structured logging), **Fix #14** (integration tests) | 2026-02-18 | be92adb, 0c17880, df983b7 |
 
 ## In Progress
 
@@ -46,10 +47,10 @@ Nothing currently in progress.
 - [x] **Fix #11**: HttpOnly cookies — login sets Secure/HttpOnly/SameSite=Lax cookies, refresh reads from cookie or body, logout clears cookies. dependencies.py checks header then cookie (backward compatible). Frontend uses `credentials:'include'`, removed localStorage token logic. Added COOKIE_DOMAIN/COOKIE_SECURE to config.
 - [x] **Fix #20**: User context — new Zustand user-store.ts (persisted), sidebar reads real name/email/avatar from store. Login page populates store from response.
 
-### Batch E — Backend Quality (Est: 1 session, 45 min)
-- [ ] **Fix #12**: Fix N+1 query in SchemaDiscoverer
-- [ ] **Fix #13**: Structured JSON logging (replace loguru text output)
-- [ ] **Fix #14**: Integration tests for all CRUD endpoints
+### ~~Batch E — Backend Quality~~ COMPLETED
+- [x] **Fix #12**: N+1 fix — `selectinload(SchemaTable.columns)` replaces inner loop query. Added `order_by=SchemaColumn.ordinal_position` to relationship. Reduces 101 queries to 2 for 100 tables.
+- [x] **Fix #13**: Structured logging — new `logging_config.py` with JSON format (prod) / pretty text (dev). `RequestIDMiddleware` generates UUID correlation ID per request via `contextvars`. `RequestLoggingMiddleware` updated.
+- [x] **Fix #14**: Integration tests — 18 new tests across `test_connections.py` (6), `test_chat.py` (6), `test_dashboards.py` (6). Enhanced `conftest.py` with `test_org`, `test_user`, `user_auth_headers`, `test_connection` fixtures.
 
 ### Batch F — AI Features (Est: 2 sessions, 1.5 hrs)
 - [ ] **Fix #16**: Implement AI streaming responses via WebSocket
@@ -79,3 +80,4 @@ Nothing currently in progress.
 | 2026-02-18 | 4 | Batch B: SSL/TLS nginx (Fix #4), Redis rate limiting (Fix #5), security headers (Fix #6) | Batch C: data layer |
 | 2026-02-18 | 5 | Batch C: DB indexes (Fix #7), pagination (Fix #8), health check (Fix #9) | Batch D: auth hardening |
 | 2026-02-18 | 6 | Batch D: Token revocation (Fix #10), HttpOnly cookies (Fix #11), user context sidebar (Fix #20) | Batch E: backend quality |
+| 2026-02-18 | 7 | Batch E: N+1 fix (Fix #12), structured JSON logging (Fix #13), integration tests (Fix #14) | Batch F: AI features |
