@@ -15,24 +15,14 @@ export async function apiClient<T = any>(
     ...((customHeaders as Record<string, string>) || {}),
   };
 
-  if (!skipAuth) {
-    const token = typeof window !== 'undefined'
-      ? localStorage.getItem('access_token')
-      : null;
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-  }
-
   const res = await fetch(`${API_URL}${endpoint}`, {
     headers,
+    credentials: 'include',
     ...rest,
   });
 
   if (res.status === 401) {
     if (typeof window !== 'undefined') {
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('refresh_token');
       window.location.href = '/login';
     }
     throw new Error('Unauthorized');

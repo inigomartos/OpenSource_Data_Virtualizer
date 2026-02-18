@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     # CORS
     CORS_ORIGINS: List[str] = ["http://localhost:3000"]
 
+    # Cookies
+    COOKIE_DOMAIN: str = "localhost"
+    COOKIE_SECURE: bool = True
+
     # Rate Limiting
     RATE_LIMIT_ENABLED: bool = True
 
